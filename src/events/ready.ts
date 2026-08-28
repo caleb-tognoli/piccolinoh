@@ -2,9 +2,8 @@ import type { Client } from "discord.js";
 import { config } from "../config.js";
 import { logger } from "../logger.js";
 import { loadCommands } from "../commands/loader.js";
-import type { DodanteClient } from "../client.js";
 
-export function registerReady(client: DodanteClient): void {
+export function registerReady(client: Client): void {
   client.once("clientReady", async (c: Client<true>) => {
     try {
       const commands = await loadCommands();

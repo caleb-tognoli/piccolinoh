@@ -3,8 +3,10 @@ import { logger } from "./logger.js";
 import { createClient } from "./client.js";
 import { registerReady } from "./events/ready.js";
 import { registerInteractionCreate } from "./events/interactionCreate.js";
+import { attachShoukaku, awaitShoukakuReady } from "./lavalink.js";
 
 const client = createClient();
+attachShoukaku(client);
 
 registerReady(client);
 registerInteractionCreate(client);
@@ -17,7 +19,16 @@ process.on("uncaughtException", (err) => {
   process.exit(1);
 });
 
-client.login(config.DISCORD_TOKEN).catch((err) => {
+try {
+  await client.login(config.DISCORD_TOKEN);
+} catch (err) {
   logger.fatal({ err }, "login failed");
   process.exit(1);
-});
+}
+
+try {
+  await awaitShoukakuReady(client, 10_000);
+} catch (err) {
+  logger.fatal({ err }, "lavalink readiness gate failed");
+  process.exit(1);
+}

@@ -1,0 +1,13 @@
+services:
+  lavalink:
+    image: ghcr.io/lavalink-devs/lavalink:4
+    container_name: piccolinoh-lavalink
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:2333:2333"
+    volumes:
+      - ./lavalink/application.yml:/opt/Lavalink/application.yml:ro
+      - ./lavalink/plugins:/opt/Lavalink/plugins
+    environment:
+      _JAVA_OPTIONS: "-Xmx512M"
+      LAVALINK_SERVER_PASSWORD: "${LAVALINK_PASSWORD}"

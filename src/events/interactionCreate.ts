@@ -1,8 +1,7 @@
-import { MessageFlags } from "discord.js";
+import { Client, MessageFlags } from "discord.js";
 import { logger } from "../logger.js";
-import type { DodanteClient } from "../client.js";
 
-export function registerInteractionCreate(client: DodanteClient): void {
+export function registerInteractionCreate(client: Client): void {
   client.on("interactionCreate", async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
