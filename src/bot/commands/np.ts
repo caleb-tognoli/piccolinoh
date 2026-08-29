@@ -1,6 +1,6 @@
 import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import { getOrCreateSessionForGuild } from "../../watchtogether/index.js";
-import { getVideoMetadata } from "../youtube.js";
+import { getVideoMetadata } from "../resolver.js";
 import type { Command } from "./_types.js";
 
 function formatDuration(sec: number): string {

@@ -18,4 +18,11 @@ CREATE TABLE IF NOT EXISTS guild_settings (
   skipmode TEXT NOT NULL DEFAULT 'anyone',
   vote_threshold REAL NOT NULL DEFAULT 0.5
 );
+
+CREATE TABLE IF NOT EXISTS thisis_cache (
+  artist_lower TEXT PRIMARY KEY,
+  playlist_url TEXT NOT NULL,
+  artist_display TEXT NOT NULL,
+  cached_at INTEGER NOT NULL
+);
 `;

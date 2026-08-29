@@ -48,6 +48,25 @@ The only knob is `LAVALINK_PASSWORD`: pick any non-empty string in
 Only the compose network sees the port (`2333`) — it is not exposed on
 the host.
 
+## Spotify (optional)
+
+Setting `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` in `.env` enables
+two things:
+
+- **Spotify URLs in `/play`**: track, album, and playlist URLs. Handled
+  entirely by Lavalink's LavaSrc plugin — the bot never talks to
+  Spotify for URL resolution. Each Spotify track is translated to a
+  YouTube video (ISRC-first, falls back to title+artist search).
+- **`/thisis <artist>`**: enqueues Spotify's curated "This Is …"
+  playlist. The bot uses one Spotify search call to find the specific
+  playlist ID (LavaSrc's search prefixes are track-only), then hands
+  the resulting URL to the same resolution path.
+
+Both credentials go through Client Credentials — no user OAuth. Mint them
+free at <https://developer.spotify.com/dashboard>. Leaving both empty
+turns Spotify off with clean errors on the two commands above; the
+YouTube path is unaffected.
+
 ## Setup
 
 ```bash
@@ -72,12 +91,15 @@ youtube-plugin JAR on cold start (a few seconds); it is not persisted.
 In Discord:
 
 - `/session` — posts a join link. Open it in a browser, click **Join & start**.
-- `/play <query or URL>` — enqueues a track. Now-playing embed pins in
-  the channel you invoked from.
+- `/play <query or URL>` — enqueues a track. Accepts a text search, a
+  YouTube URL, or (with Spotify configured) a Spotify track / album /
+  playlist URL. Now-playing embed pins in the channel you invoked from.
+- `/thisis <artist>` — enqueues the Spotify "This Is …" playlist for
+  that artist. Requires Spotify credentials.
 - `/pause`, `/resume`, `/skip`, `/queue`, `/remove <n>`, `/np` — do
   what they say.
-- `/settings skipmode <anyone|vote|dj>` — stored today; Phase 4 will
-  start enforcing it.
+- `/settings skipmode <anyone|vote|dj>` — stored today; enforcement is
+  on the Later list.
 
 To stop:
 

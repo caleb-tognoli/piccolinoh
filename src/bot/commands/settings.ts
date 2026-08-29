@@ -1,5 +1,5 @@
 import { SlashCommandBuilder } from "discord.js";
-import { setGuildSkipmode } from "../youtube.js";
+import { setGuildSkipmode } from "../resolver.js";
 import type { Command } from "./_types.js";
 
 const command: Command = {

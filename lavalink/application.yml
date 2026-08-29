@@ -6,6 +6,8 @@ lavalink:
   plugins:
     - dependency: "dev.lavalink.youtube:youtube-plugin:1.18.2"
       repository: "https://maven.lavalink.dev/releases"
+    - dependency: "com.github.topi314.lavasrc:lavasrc-plugin:4.8.3"
+      repository: "https://maven.lavalink.dev/releases"
   server:
     password: "${LAVALINK_PASSWORD}"
     sources:
@@ -43,6 +45,26 @@ plugins:
       - MUSIC
       - WEB
       - ANDROID_TESTSUITE
+
+  lavasrc:
+    # Spotify URLs come in as identifiers; LavaSrc fetches metadata
+    # from Spotify then translates each track to a YouTube video via
+    # the providers list below. The bot only ever sees YouTube tracks.
+    providers:
+      - "ytsearch:\"%ISRC%\""
+      - "ytsearch:%QUERY%"
+    sources:
+      spotify: true
+      applemusic: false
+      deezer: false
+      yandexmusic: false
+      flowerytts: false
+    spotify:
+      clientId: "${SPOTIFY_CLIENT_ID}"
+      clientSecret: "${SPOTIFY_CLIENT_SECRET}"
+      countryCode: "US"
+      playlistLoadLimit: 1  # 100 tracks per unit
+      albumLoadLimit: 1
 
 logging:
   level:

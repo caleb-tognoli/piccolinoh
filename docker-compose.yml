@@ -17,6 +17,8 @@ services:
       SQLITE_PATH: /app/data/piccolinoh.db
       LAVALINK_URL: http://lavalink:2333
       LAVALINK_PASSWORD: ${LAVALINK_PASSWORD}
+      SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID:-}
+      SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET:-}
     volumes:
       - piccolinoh_data:/app/data
 
@@ -27,6 +29,8 @@ services:
     environment:
       LAVALINK_PASSWORD: ${LAVALINK_PASSWORD}
       SERVER_PORT: 2333
+      SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID:-}
+      SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET:-}
     volumes:
       - ./lavalink/application.yml:/opt/Lavalink/application.yml:ro
     healthcheck:

@@ -7,14 +7,15 @@ import {
 } from "../../watchtogether/index.js";
 import { ensureNowPlaying } from "../nowPlaying.js";
 import { resolveInput } from "../resolver.js";
+import { findThisIsPlaylistUrl, isConfigured } from "../spotify.js";
 import type { Command } from "./_types.js";
 
 const command: Command = {
   data: new SlashCommandBuilder()
-    .setName("play")
-    .setDescription("Queue a YouTube or Spotify URL, or a text search")
+    .setName("thisis")
+    .setDescription("Play a 'This Is <artist>' playlist from Spotify")
     .addStringOption((o) =>
-      o.setName("query").setDescription("URL or text to search").setRequired(true),
+      o.setName("artist").setDescription("Artist name").setRequired(true),
     )
     .setDMPermission(false),
 
@@ -26,15 +27,39 @@ const command: Command = {
       });
       return;
     }
+    if (!isConfigured()) {
+      await interaction.reply({
+        content: "Spotify integration not configured — see README.",
+        ephemeral: true,
+      });
+      return;
+    }
 
     await interaction.deferReply();
+    const artist = interaction.options.getString("artist", true);
 
-    const input = interaction.options.getString("query", true);
-    const result = await resolveInput(input);
+    let lookup: Awaited<ReturnType<typeof findThisIsPlaylistUrl>>;
+    try {
+      lookup = await findThisIsPlaylistUrl(artist);
+    } catch (err) {
+      logger.error({ err, artist }, "findThisIsPlaylistUrl failed");
+      await interaction.editReply(
+        `Error looking up Spotify: ${(err as Error).message}`,
+      );
+      return;
+    }
+    if (!lookup) {
+      await interaction.editReply(
+        `No "This Is …" playlist found for **${artist}**.`,
+      );
+      return;
+    }
+
+    const result = await resolveInput(lookup.url);
     if (!result.ok) {
       const message =
         result.reason === "not-found"
-          ? "No results."
+          ? "Playlist could not be resolved."
           : result.reason === "spotify-not-configured"
             ? "Spotify integration not configured — see README."
             : `Error: ${result.detail ?? "unknown"}`;
@@ -43,8 +68,6 @@ const command: Command = {
     }
 
     const session = getOrCreateSessionForGuild(interaction.guildId);
-    const wasEmpty = !session.current;
-
     for (const track of result.tracks) {
       applyControl(
         session,
@@ -57,12 +80,9 @@ const command: Command = {
       );
     }
 
-    const first = result.tracks[0]!;
-    const isSingle = result.tracks.length === 1 && !result.sourceLabel;
-    const reply = isSingle
-      ? `${wasEmpty ? "Playing" : "Queued"} **${first.title}** — ${first.author}`
-      : `Queued ${result.tracks.length} tracks from **${result.sourceLabel}**`;
-    await interaction.editReply(reply);
+    await interaction.editReply(
+      `Queued ${result.tracks.length} tracks from **This Is ${lookup.artistDisplayName}**`,
+    );
 
     try {
       await ensureNowPlaying(

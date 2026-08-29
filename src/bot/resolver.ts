@@ -4,6 +4,7 @@ import { getDb } from "./db/index.js";
 
 const QUERY_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const VIDEO_ID_RE = /^([a-zA-Z0-9_-]{11})$/;
+const SPOTIFY_HOST = "open.spotify.com";
 
 export interface ResolvedTrack {
   videoId: string;
@@ -13,8 +14,12 @@ export interface ResolvedTrack {
 }
 
 export type ResolveResult =
-  | { ok: true; track: ResolvedTrack }
-  | { ok: false; reason: "not-found" | "error"; detail?: string };
+  | { ok: true; tracks: ResolvedTrack[]; sourceLabel?: string }
+  | {
+      ok: false;
+      reason: "not-found" | "error" | "spotify-not-configured";
+      detail?: string;
+    };
 
 interface VideoRow {
   video_id: string;
@@ -35,15 +40,28 @@ interface LavalinkTrack {
     author: string;
     length: number;
     isStream: boolean;
+    sourceName?: string;
+    uri?: string;
   };
 }
+
+type LoadResult =
+  | { kind: "single"; track: LavalinkTrack }
+  | { kind: "playlist"; name: string; tracks: LavalinkTrack[] }
+  | { kind: "empty" };
 
 type LoadTracksResponse =
   | { loadType: "track"; data: LavalinkTrack }
   | { loadType: "search"; data: LavalinkTrack[] }
-  | { loadType: "playlist"; data: { tracks: LavalinkTrack[] } }
+  | {
+      loadType: "playlist";
+      data: { info: { name: string; selectedTrack?: number }; tracks: LavalinkTrack[] };
+    }
   | { loadType: "empty"; data: null }
-  | { loadType: "error"; data: { message: string; severity: string; cause?: string } };
+  | {
+      loadType: "error";
+      data: { message: string; severity: string; cause?: string };
+    };
 
 function extractVideoId(input: string): string | null {
   const trimmed = input.trim();
@@ -70,9 +88,22 @@ function extractVideoId(input: string): string | null {
   return null;
 }
 
-function looksLikeUrlOrId(input: string): boolean {
+function looksLikeUrl(input: string): boolean {
   const t = input.trim();
   return t.startsWith("http://") || t.startsWith("https://") || VIDEO_ID_RE.test(t);
+}
+
+function isSpotifyUrl(input: string): boolean {
+  const t = input.trim();
+  try {
+    return new URL(t).hostname === SPOTIFY_HOST;
+  } catch {
+    return false;
+  }
+}
+
+function isSpotifyConfigured(): boolean {
+  return !!(config.SPOTIFY_CLIENT_ID && config.SPOTIFY_CLIENT_SECRET);
 }
 
 function getVideoFromCache(videoId: string): ResolvedTrack | null {
@@ -115,7 +146,7 @@ function saveQueryToCache(query: string, videoId: string): void {
     .run(query.toLowerCase(), videoId, Date.now());
 }
 
-async function loadTracks(identifier: string): Promise<LavalinkTrack | null> {
+export async function loadTracks(identifier: string): Promise<LoadResult> {
   const url = new URL("/v4/loadtracks", config.LAVALINK_URL);
   url.searchParams.set("identifier", identifier);
   const res = await fetch(url, {
@@ -127,69 +158,118 @@ async function loadTracks(identifier: string): Promise<LavalinkTrack | null> {
   const data = (await res.json()) as LoadTracksResponse;
   switch (data.loadType) {
     case "empty":
-      return null;
+      return { kind: "empty" };
     case "error":
       throw new Error(`loadtracks error: ${data.data.message}`);
     case "track":
-      return data.data;
-    case "search":
-      return data.data[0] ?? null;
+      return { kind: "single", track: data.data };
+    case "search": {
+      const first = data.data[0];
+      return first ? { kind: "single", track: first } : { kind: "empty" };
+    }
     case "playlist":
-      return data.data.tracks[0] ?? null;
+      return {
+        kind: "playlist",
+        name: data.data.info.name,
+        tracks: data.data.tracks,
+      };
   }
 }
 
-function trackFromLavalink(raw: LavalinkTrack, fallbackVideoId?: string): ResolvedTrack {
+function trackFromLavalink(raw: LavalinkTrack): ResolvedTrack {
   return {
-    videoId: fallbackVideoId ?? raw.info.identifier,
+    videoId: raw.info.identifier,
     title: raw.info.title,
     author: raw.info.author,
     durationSec: Math.round(raw.info.length / 1000),
   };
 }
 
+function playableTracks(raw: LavalinkTrack[]): ResolvedTrack[] {
+  const out: ResolvedTrack[] = [];
+  for (const r of raw) {
+    if (r.info.isStream) continue;
+    if (!r.info.identifier) continue;
+    out.push(trackFromLavalink(r));
+    saveVideoToCache(out[out.length - 1]!);
+  }
+  return out;
+}
+
 async function resolveByVideoId(videoId: string): Promise<ResolveResult> {
   const cached = getVideoFromCache(videoId);
-  if (cached) return { ok: true, track: cached };
-  const raw = await loadTracks(`https://www.youtube.com/watch?v=${videoId}`);
-  if (!raw || raw.info.isStream) return { ok: false, reason: "not-found" };
-  const track = trackFromLavalink(raw, videoId);
+  if (cached) return { ok: true, tracks: [cached] };
+  const result = await loadTracks(`https://www.youtube.com/watch?v=${videoId}`);
+  if (result.kind !== "single" || result.track.info.isStream) {
+    return { ok: false, reason: "not-found" };
+  }
+  const track = { ...trackFromLavalink(result.track), videoId };
   saveVideoToCache(track);
-  return { ok: true, track };
+  return { ok: true, tracks: [track] };
 }
 
 export async function resolveInput(input: string): Promise<ResolveResult> {
   try {
-    if (looksLikeUrlOrId(input)) {
-      const videoId = extractVideoId(input);
-      if (!videoId) {
-        return { ok: false, reason: "error", detail: "could not extract video id from URL" };
+    if (looksLikeUrl(input)) {
+      if (isSpotifyUrl(input) && !isSpotifyConfigured()) {
+        return { ok: false, reason: "spotify-not-configured" };
       }
-      return await resolveByVideoId(videoId);
+
+      // YouTube URL / bare id fast path preserves the videoId cache hit.
+      const ytVideoId = extractVideoId(input);
+      if (ytVideoId) return await resolveByVideoId(ytVideoId);
+
+      // Anything else with a URL shape (Spotify, or unusual YouTube URLs
+      // extractVideoId doesn't catch) goes straight to Lavalink.
+      const result = await loadTracks(input);
+      if (result.kind === "empty") {
+        if (isSpotifyUrl(input) && !isSpotifyConfigured()) {
+          return { ok: false, reason: "spotify-not-configured" };
+        }
+        return { ok: false, reason: "not-found" };
+      }
+      if (result.kind === "single") {
+        if (result.track.info.isStream) return { ok: false, reason: "not-found" };
+        const track = trackFromLavalink(result.track);
+        saveVideoToCache(track);
+        return { ok: true, tracks: [track] };
+      }
+      // playlist
+      const tracks = playableTracks(result.tracks);
+      if (tracks.length === 0) return { ok: false, reason: "not-found" };
+      return { ok: true, tracks, sourceLabel: result.name };
     }
 
+    // text query path — YouTube search via Lavalink, unchanged behavior
     const query = input.trim();
     const cachedVideoId = getQueryFromCache(query);
     if (cachedVideoId) {
       const cached = getVideoFromCache(cachedVideoId);
-      if (cached) return { ok: true, track: cached };
+      if (cached) return { ok: true, tracks: [cached] };
     }
 
-    const raw = await loadTracks(`ytsearch:${query}`);
-    if (!raw || raw.info.isStream) return { ok: false, reason: "not-found" };
-    const track = trackFromLavalink(raw);
+    const result = await loadTracks(`ytsearch:${query}`);
+    if (result.kind !== "single" || result.track.info.isStream) {
+      return { ok: false, reason: "not-found" };
+    }
+    const track = trackFromLavalink(result.track);
     saveVideoToCache(track);
     saveQueryToCache(query, track.videoId);
-    return { ok: true, track };
+    return { ok: true, tracks: [track] };
   } catch (err) {
-    logger.error({ err, input }, "youtube resolveInput failed");
+    logger.error({ err, input }, "resolveInput failed");
     return { ok: false, reason: "error", detail: (err as Error).message };
   }
 }
 
-export function getGuildSetting(guildId: string): { skipmode: string; voteThreshold: number } {
+export function getGuildSetting(guildId: string): {
+  skipmode: string;
+  voteThreshold: number;
+} {
   const row = getDb()
-    .prepare("SELECT skipmode, vote_threshold FROM guild_settings WHERE guild_id = ?")
+    .prepare(
+      "SELECT skipmode, vote_threshold FROM guild_settings WHERE guild_id = ?",
+    )
     .get(guildId) as { skipmode: string; vote_threshold: number } | undefined;
   return {
     skipmode: row?.skipmode ?? "anyone",
@@ -197,7 +277,10 @@ export function getGuildSetting(guildId: string): { skipmode: string; voteThresh
   };
 }
 
-export function setGuildSkipmode(guildId: string, mode: "anyone" | "vote" | "dj"): void {
+export function setGuildSkipmode(
+  guildId: string,
+  mode: "anyone" | "vote" | "dj",
+): void {
   getDb()
     .prepare(
       "INSERT INTO guild_settings (guild_id, skipmode) VALUES (?, ?) ON CONFLICT(guild_id) DO UPDATE SET skipmode = excluded.skipmode",
@@ -205,10 +288,20 @@ export function setGuildSkipmode(guildId: string, mode: "anyone" | "vote" | "dj"
     .run(guildId, mode);
 }
 
-export function getVideoMetadata(videoId: string): { title: string; author: string; durationSec: number } | null {
+export function getVideoMetadata(
+  videoId: string,
+): { title: string; author: string; durationSec: number } | null {
   const row = getDb()
-    .prepare("SELECT title, author, duration_sec FROM video_cache WHERE video_id = ?")
-    .get(videoId) as { title: string; author: string; duration_sec: number } | undefined;
+    .prepare(
+      "SELECT title, author, duration_sec FROM video_cache WHERE video_id = ?",
+    )
+    .get(videoId) as
+    | { title: string; author: string; duration_sec: number }
+    | undefined;
   if (!row) return null;
-  return { title: row.title, author: row.author, durationSec: row.duration_sec };
+  return {
+    title: row.title,
+    author: row.author,
+    durationSec: row.duration_sec,
+  };
 }

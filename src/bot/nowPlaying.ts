@@ -3,7 +3,7 @@ import { EmbedBuilder } from "discord.js";
 import { logger } from "../logger.js";
 import type { SerializedSession } from "../watchtogether/index.js";
 import { subscribeToSession } from "../watchtogether/index.js";
-import { getVideoMetadata } from "./youtube.js";
+import { getVideoMetadata } from "./resolver.js";
 
 interface NowPlayingEntry {
   channelId: string;
