@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>piccolinoh · roadmap</title>
+<style>
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    max-width: 720px;
+    margin: 3rem auto;
+    padding: 0 1.25rem;
+    line-height: 1.55;
+    color: #1c1e23;
+    background: #fafaf7;
+  }
+  h1 { font-size: 1.9rem; margin: 0 0 0.25rem; }
+  h2 { margin-top: 2.5rem; border-bottom: 1px solid #ddd; padding-bottom: 0.3rem; }
+  h3 { margin-top: 1.6rem; margin-bottom: 0.3rem; }
+  .sub { color: #666; margin-top: 0; }
+  ul { padding-left: 1.25rem; }
+  li { margin: 0.35rem 0; }
+  code {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    background: #eee;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 0.9em;
+  }
+  .done { color: #4d7a56; }
+  .stretch { color: #6d5c8b; }
+  footer { margin-top: 3rem; color: #888; font-size: 0.85rem; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #14161a; color: #e6e3da; }
+    h2 { border-bottom-color: #2a2d34; }
+    .sub { color: #8b909a; }
+    code { background: #262a32; color: #e6e3da; }
+    footer { color: #62666f; }
+    .done { color: #8bbf7f; }
+    .stretch { color: #a99bd0; }
+  }
+</style>
+</head>
+<body>
+
+<h1>piccolinoh — roadmap</h1>
+<p class="sub">What's next after the Lavalink resolver swap.</p>
+
+<h2>Shipped</h2>
+<ul>
+  <li class="done">P0 — Server-side audio path removed.</li>
+  <li class="done">P1 — State server + WebSocket protocol.</li>
+  <li class="done">P2 — Web client with synced YouTube player.</li>
+  <li class="done">P3 — Discord bot wired to <code>watchtogether</code>, 9 slash commands, SQLite cache.</li>
+  <li class="done">Lavalink swap — YouTube Data API replaced by local Lavalink resolver.</li>
+</ul>
+
+<h2>Phase 4 — Multi-source resolution</h2>
+<p>User keeps typing into one text field; the resolver figures out where the input came from and always translates it to a YouTube video for the browser player. YouTube stays the sole playback medium — the point is to widen what people can paste in, not to add new playback paths.</p>
+<ul>
+  <li><strong>Spotify URLs.</strong> Accept a Spotify track / album / playlist URL in <code>/play</code>. Resolve each track by <code>ytsearch:artist track</code> through Lavalink and enqueue. Needs Spotify Client Credentials (free, no OAuth flow).</li>
+  <li><strong><code>/thisis &lt;artist&gt;</code>.</strong> Fetch the Spotify "This Is &lt;Artist&gt;" playlist, resolve each track to YouTube, enqueue in order. Cache-friendly since the playlist rarely changes.</li>
+  <li><strong>URL-shape dispatch in <code>resolveInput</code>.</strong> Small router: YouTube URL / bare id / plain text (existing path) vs. Spotify URL (new path). Text queries stay YouTube-first.</li>
+  <li><strong>Cache scoping.</strong> The <code>query_cache</code> key becomes <code>{source, query}</code> so a Spotify URL and a raw text query never collide.</li>
+</ul>
+
+<h2>Phase 5 — Discord UX polish</h2>
+<p>Make the bot feel like a product instead of a CLI. The tentpole is dropping <code>/session</code> — Discord already knows who the user is; the join flow shouldn't need forms.</p>
+<ul>
+  <li><strong><code>/join</code> replaces <code>/session</code>.</strong> Bot replies with a plain Discord link that opens the user's default browser directly. No copy-paste, no join screen.</li>
+  <li><strong>Auto-set display name.</strong> The <code>/join</code> URL carries a bot-signed name token (short HMAC over <code>guildId + userId + displayName</code>). Browser skips the name prompt when a valid token is present.</li>
+  <li><strong>Prettier command output.</strong> Replace the plain-text replies with a small embed vocabulary — one style for "queued", one for state changes, one for errors. Consistent colors, footers, thumbnails.</li>
+  <li><strong>Minor utility commands.</strong> <code>/replay</code> (re-enqueue current), <code>/move &lt;from&gt; &lt;to&gt;</code> (queue reorder — protocol already supports it), <code>/history</code> (recently played), <code>/clear</code> (empty the queue).</li>
+  <li><strong>Autoplay-off toggle.</strong> <code>/settings autoplay &lt;on|off&gt;</code> stops <code>scheduleAdvance</code> from promoting the next track.</li>
+</ul>
+
+<h2>Phase 6 — Web UI &amp; UX</h2>
+<p>The web client is functional but bare. Specifics get pinned down when we open this phase; below is the current wishlist.</p>
+<ul>
+  <li><strong>Overall visual polish.</strong> Real type scale, spacing, and a considered palette. Presence, queue, transport controls all get a design pass.</li>
+  <li><strong>Now-playing surface.</strong> Show title / author / thumbnail / progress bar prominently instead of just leaving the YouTube frame to speak.</li>
+  <li><strong>Queue rendering.</strong> Reorderable list with drag-to-move, item-level remove, per-item requester avatar (once names are wired).</li>
+  <li><strong>Mobile polish.</strong> iOS autoplay quirks (tap-to-start fallback), touch-sized controls, layout under narrow viewports.</li>
+  <li><strong>Presence display.</strong> Show who's actually listening, using the auto-set names from P5.</li>
+</ul>
+
+<h2>Phase 7 — Preparing for a real deploy</h2>
+<p>The install-once-and-leave-it milestone.</p>
+<ul>
+  <li><strong>Session persistence across restart.</strong> Serialize <code>Session</code> to SQLite on every mutation, re-hydrate on boot, bump the epoch so browsers resync.</li>
+  <li><strong>WS resync + reconnect backoff.</strong> Exponential backoff on the client, drop stale clock offsets, re-fetch state on <code>hello</code>.</li>
+  <li><strong>Control-message rate limiting.</strong> Per-client leaky bucket on <code>applyControl</code> in <code>ws.ts</code>.</li>
+  <li><strong>Caddy TLS reverse proxy.</strong> Third compose service in front of <code>piccolinoh:3000</code>, Let's Encrypt auto-cert on <code>PUBLIC_BASE_URL</code>.</li>
+  <li><strong>Structured logs + health endpoint.</strong> Pino serializers, plus <code>GET /healthz</code> reporting session count and Lavalink reachability.</li>
+  <li><strong>Backup story for <code>piccolinoh.db</code>.</strong> Volume snapshotting or an explicit dump-on-shutdown.</li>
+</ul>
+
+<h2>Later — worth remembering</h2>
+<p>Things worth naming so they don't get forgotten, but not slated to a phase yet.</p>
+<ul>
+  <li class="stretch"><strong>User permissions &amp; role model.</strong> View-only / controller / DJ split. The <code>control</code> WS message is the single axis to gate.</li>
+  <li class="stretch"><strong>Vote-skip enforcement.</strong> <code>skipmode vote</code> already persists; gate <code>/skip</code> on a majority of active listeners once the permission model exists to say who counts.</li>
+  <li class="stretch"><strong>DJ role enforcement.</strong> <code>skipmode dj</code> gates mutations on a Discord role. Needs <code>/settings djrole &lt;role&gt;</code>.</li>
+  <li class="stretch"><strong>Full Discord OAuth.</strong> Only if the signed-name-token from P5 turns out to be too weak. Otherwise skip.</li>
+  <li class="stretch"><strong>Playlist history &amp; per-guild library.</strong> Save enqueued tracks, offer <code>/library</code> lookup, "play something like last Friday" kind of queries.</li>
+  <li class="stretch"><strong>Multi-guild scale.</strong> Sharding, Lavalink node pool, DB partitioning — only relevant if the bot ends up in more than a handful of guilds.</li>
+</ul>
+
+<footer>
+  Updated 2026-08-29. Edit this file in place as the plan changes.
+</footer>
+
+</body>
+</html>
