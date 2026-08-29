@@ -66,8 +66,8 @@ The `piccolinoh` container serves everything on port `3000`: the
 watchtogether HTTP + WebSocket API, the built web page, and the Discord
 bot process. It depends on a sidecar `lavalink` container that starts
 alongside it. Data (SQLite video/query cache + guild settings) persists
-in a named Docker volume `piccolinoh_data`. Lavalink plugin JARs
-persist in `lavalink_plugins`.
+in a named Docker volume `piccolinoh_data`. Lavalink downloads the
+youtube-plugin JAR on cold start (a few seconds); it is not persisted.
 
 In Discord:
 

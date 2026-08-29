@@ -29,7 +29,6 @@ services:
       SERVER_PORT: 2333
     volumes:
       - ./lavalink/application.yml:/opt/Lavalink/application.yml:ro
-      - lavalink_plugins:/opt/Lavalink/plugins
     healthcheck:
       test:
         - CMD-SHELL
@@ -41,4 +40,3 @@ services:
 
 volumes:
   piccolinoh_data:
-  lavalink_plugins:
