@@ -5,6 +5,9 @@ services:
       dockerfile: Dockerfile
     container_name: piccolinoh
     restart: unless-stopped
+    depends_on:
+      lavalink:
+        condition: service_healthy
     ports:
       - "3000:3000"
     env_file: .env
@@ -12,8 +15,30 @@ services:
       NODE_ENV: production
       HTTP_PORT: 3000
       SQLITE_PATH: /app/data/piccolinoh.db
+      LAVALINK_URL: http://lavalink:2333
+      LAVALINK_PASSWORD: ${LAVALINK_PASSWORD}
     volumes:
       - piccolinoh_data:/app/data
 
+  lavalink:
+    image: ghcr.io/lavalink-devs/lavalink:4
+    container_name: piccolinoh-lavalink
+    restart: unless-stopped
+    environment:
+      LAVALINK_PASSWORD: ${LAVALINK_PASSWORD}
+      SERVER_PORT: 2333
+    volumes:
+      - ./lavalink/application.yml:/opt/Lavalink/application.yml:ro
+      - lavalink_plugins:/opt/Lavalink/plugins
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "wget -q -O - --header \"Authorization: $$LAVALINK_PASSWORD\" http://localhost:2333/version >/dev/null 2>&1 || exit 1"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
 volumes:
   piccolinoh_data:
+  lavalink_plugins:

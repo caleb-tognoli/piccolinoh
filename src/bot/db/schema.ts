@@ -13,11 +13,6 @@ CREATE TABLE IF NOT EXISTS video_cache (
   cached_at INTEGER NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS youtube_quota (
-  day TEXT PRIMARY KEY,
-  units_used INTEGER NOT NULL
-);
-
 CREATE TABLE IF NOT EXISTS guild_settings (
   guild_id TEXT PRIMARY KEY,
   skipmode TEXT NOT NULL DEFAULT 'anyone',

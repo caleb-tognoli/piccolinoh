@@ -1,0 +1,50 @@
+server:
+  port: 2333
+  address: 0.0.0.0
+
+lavalink:
+  plugins:
+    - dependency: "dev.lavalink.youtube:youtube-plugin:1.18.2"
+      repository: "https://maven.lavalink.dev/releases"
+  server:
+    password: "${LAVALINK_PASSWORD}"
+    sources:
+      # built-in youtube is disabled; youtube-plugin below owns it
+      youtube: false
+      bandcamp: false
+      soundcloud: false
+      twitch: false
+      vimeo: false
+      http: false
+      local: false
+    filters:
+      volume: false
+      equalizer: false
+      karaoke: false
+      timescale: false
+      tremolo: false
+      vibrato: false
+      distortion: false
+      rotation: false
+      channelMix: false
+      lowPass: false
+    bufferDurationMs: 400
+    frameBufferDurationMs: 5000
+    trackStuckThresholdMs: 10000
+
+plugins:
+  youtube:
+    enabled: true
+    # Resolution-only clients. No OAuth block on purpose — we never
+    # request a playable stream URL, so poToken / cipher paths are
+    # never exercised. Metadata fields (title/author/length) are
+    # returned regardless of playback-side restrictions.
+    clients:
+      - MUSIC
+      - WEB
+      - ANDROID_TESTSUITE
+
+logging:
+  level:
+    root: INFO
+    lavalink: INFO

@@ -32,37 +32,28 @@ Phase 3 shipped: the Discord bot is a real consumer of `watchtogether`.
   there if you've run `corepack enable` as admin.
 - A Discord application with a bot user (token, client ID).
 - A test guild ID for local development.
-- A **YouTube Data API v3 key** (see below).
-- Docker Desktop, for the one-command run flow.
+- Docker Desktop, for the one-command run flow (also brings up Lavalink).
 
-## YouTube API key
+## Lavalink (search resolver)
 
-`/play` searches YouTube by text via `search.list` (100 units per query)
-and looks up durations via `videos.list` (1 unit). The free tier is
-10 000 units per project per day, so budget stays comfortable for a
-private bot: ~99 text queries per day, effectively unlimited URLs.
+`/play` turns text or a YouTube URL into `{videoId, title, author,
+durationSec}` by calling Lavalink's `GET /v4/loadtracks`. The compose
+stack ships a Lavalink container with the `youtube-source` plugin
+pre-configured for resolution only — no audio ever streams through it,
+so poToken / OAuth / IP-flag drama does not apply. There is no daily
+search cap.
 
-Mint a key:
-
-1. Open the [Google Cloud Console](https://console.cloud.google.com/).
-2. Create a project (any name).
-3. Under **APIs & Services → Enabled APIs**, enable **YouTube Data API v3**.
-4. Under **APIs & Services → Credentials**, click **Create Credentials →
-   API key**.
-5. (Recommended) restrict the key to **YouTube Data API v3** so a leak
-   can't be misused for other Google services.
-6. Copy the key into `.env` as `YOUTUBE_API_KEY=...`.
-
-If you exhaust the daily quota, `/play <text>` replies "Search budget
-used — paste a link." — a URL-based `/play` still works while quota
-allows (1 unit per lookup).
+The only knob is `LAVALINK_PASSWORD`: pick any non-empty string in
+`.env`, and compose passes the same value to both the bot and Lavalink.
+Only the compose network sees the port (`2333`) — it is not exposed on
+the host.
 
 ## Setup
 
 ```bash
 corepack pnpm install
 cp .env.example .env
-# fill DISCORD_TOKEN, DISCORD_CLIENT_ID, DISCORD_GUILD_ID, YOUTUBE_API_KEY
+# fill DISCORD_TOKEN, DISCORD_CLIENT_ID, DISCORD_GUILD_ID, LAVALINK_PASSWORD
 ```
 
 ## Running — Docker (single container, recommended)
@@ -71,10 +62,12 @@ cp .env.example .env
 docker compose up --build
 ```
 
-The container serves everything on port `3000`: the watchtogether HTTP +
-WebSocket API, the built web page, and the Discord bot process. Data
-(SQLite cache + quota + guild settings) persists in a named Docker
-volume `piccolinoh_data`.
+The `piccolinoh` container serves everything on port `3000`: the
+watchtogether HTTP + WebSocket API, the built web page, and the Discord
+bot process. It depends on a sidecar `lavalink` container that starts
+alongside it. Data (SQLite video/query cache + guild settings) persists
+in a named Docker volume `piccolinoh_data`. Lavalink plugin JARs
+persist in `lavalink_plugins`.
 
 In Discord:
 
@@ -94,7 +87,16 @@ docker compose down
 
 ## Running — local dev with HMR
 
-Two terminals, with Vite hot-reloading the browser page:
+Three terminals: Lavalink (via docker), the server, and Vite:
+
+```bash
+docker compose up lavalink
+```
+
+Then in `.env` (for local dev only) set `LAVALINK_URL=http://localhost:2333`
+so the host-side Node process can reach the container. Expose the port
+from compose while iterating (`ports: ["2333:2333"]` under the
+`lavalink` service) if you have not already.
 
 ```bash
 corepack pnpm dev

@@ -35,9 +35,7 @@ const command: Command = {
       const message =
         result.reason === "not-found"
           ? "No results."
-          : result.reason === "quota-exhausted"
-            ? "Search budget used — paste a link."
-            : `Error: ${result.detail ?? "unknown"}`;
+          : `Error: ${result.detail ?? "unknown"}`;
       await interaction.editReply(message);
       return;
     }

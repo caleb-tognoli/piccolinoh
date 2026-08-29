@@ -6,7 +6,8 @@
 process.env["DISCORD_TOKEN"] ??= "test-token";
 process.env["DISCORD_CLIENT_ID"] ??= "111111111111111111";
 process.env["DISCORD_GUILD_ID"] ??= "222222222222222222";
-process.env["YOUTUBE_API_KEY"] ??= "test-key";
+process.env["LAVALINK_URL"] ??= "http://lavalink:2333";
+process.env["LAVALINK_PASSWORD"] ??= "test-password";
 process.env["HTTP_PORT"] ??= "3000";
 process.env["PUBLIC_BASE_URL"] ??= "http://localhost:3000";
 process.env["SQLITE_PATH"] ??= ":memory:";
