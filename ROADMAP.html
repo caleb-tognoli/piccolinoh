@@ -53,15 +53,7 @@
   <li class="done">P2 — Web client with synced YouTube player.</li>
   <li class="done">P3 — Discord bot wired to <code>watchtogether</code>, 9 slash commands, SQLite cache.</li>
   <li class="done">Lavalink swap — YouTube Data API replaced by local Lavalink resolver.</li>
-</ul>
-
-<h2>Phase 4 — Multi-source resolution</h2>
-<p>User keeps typing into one text field; the resolver figures out where the input came from and always translates it to a YouTube video for the browser player. YouTube stays the sole playback medium — the point is to widen what people can paste in, not to add new playback paths.</p>
-<ul>
-  <li><strong>Spotify URLs.</strong> Accept a Spotify track / album / playlist URL in <code>/play</code>. Resolve each track by <code>ytsearch:artist track</code> through Lavalink and enqueue. Needs Spotify Client Credentials (free, no OAuth flow).</li>
-  <li><strong><code>/thisis &lt;artist&gt;</code>.</strong> Fetch the Spotify "This Is &lt;Artist&gt;" playlist, resolve each track to YouTube, enqueue in order. Cache-friendly since the playlist rarely changes.</li>
-  <li><strong>URL-shape dispatch in <code>resolveInput</code>.</strong> Small router: YouTube URL / bare id / plain text (existing path) vs. Spotify URL (new path). Text queries stay YouTube-first.</li>
-  <li><strong>Cache scoping.</strong> The <code>query_cache</code> key becomes <code>{source, query}</code> so a Spotify URL and a raw text query never collide.</li>
+  <li class="done">P4 — Multi-source resolution via LavaSrc + <code>/thisis</code>.</li>
 </ul>
 
 <h2>Phase 5 — Discord UX polish</h2>
