@@ -5,7 +5,7 @@ import websocket from "@fastify/websocket";
 import Fastify, { type FastifyInstance } from "fastify";
 import { z } from "zod";
 import { logger } from "../logger.js";
-import { createSessionInStore } from "./store.js";
+import { getOrCreateSessionForGuild } from "./store.js";
 import { attachSocket } from "./ws.js";
 
 const createSessionBody = z.object({
@@ -50,7 +50,7 @@ export async function startServer(port: number): Promise<FastifyInstance> {
       reply.code(400);
       return { error: "invalid body", details: parsed.error.issues };
     }
-    const session = createSessionInStore(parsed.data.guildId);
+    const session = getOrCreateSessionForGuild(parsed.data.guildId);
     return { id: session.id, token: session.id };
   });
 

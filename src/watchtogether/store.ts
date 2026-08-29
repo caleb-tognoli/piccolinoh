@@ -1,15 +1,27 @@
 import { createSession, type Session } from "./session.js";
 
 const sessions = new Map<string, Session>();
+const guildIndex = new Map<string, string>();
 
 export function createSessionInStore(guildId: string): Session {
   const session = createSession(guildId);
   sessions.set(session.id, session);
+  guildIndex.set(guildId, session.id);
   return session;
 }
 
 export function getSession(id: string): Session | undefined {
   return sessions.get(id);
+}
+
+export function getOrCreateSessionForGuild(guildId: string): Session {
+  const existingId = guildIndex.get(guildId);
+  if (existingId) {
+    const existing = sessions.get(existingId);
+    if (existing) return existing;
+    guildIndex.delete(guildId);
+  }
+  return createSessionInStore(guildId);
 }
 
 export function destroySession(id: string): void {
@@ -26,6 +38,7 @@ export function destroySession(id: string): void {
       // ignore
     }
   }
+  guildIndex.delete(session.guildId);
   sessions.delete(id);
 }
 

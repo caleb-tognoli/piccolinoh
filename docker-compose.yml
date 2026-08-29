@@ -11,3 +11,9 @@ services:
     environment:
       NODE_ENV: production
       HTTP_PORT: 3000
+      SQLITE_PATH: /app/data/piccolinoh.db
+    volumes:
+      - piccolinoh_data:/app/data
+
+volumes:
+  piccolinoh_data:

@@ -6,9 +6,9 @@
 
 export { startServer } from "./boot.js";
 export {
-  createSessionInStore as createSession,
   getSession,
   destroySession,
+  getOrCreateSessionForGuild,
 } from "./store.js";
 export type {
   Session,
@@ -17,3 +17,7 @@ export type {
   CurrentTrack,
   SessionSettings,
 } from "./session.js";
+export { serializeForClient } from "./session.js";
+export { applyControl, handlePlaybackError } from "./control.js";
+export { subscribeToSession } from "./events.js";
+export type { ControlAction } from "./protocol.js";
