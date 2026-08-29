@@ -1,6 +1,6 @@
 import type { Client } from "discord.js";
-import { config } from "../config.js";
-import { logger } from "../logger.js";
+import { config } from "../../config.js";
+import { logger } from "../../logger.js";
 import { loadCommands } from "../commands/loader.js";
 
 export function registerReady(client: Client): void {

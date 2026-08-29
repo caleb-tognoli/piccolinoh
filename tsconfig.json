@@ -5,7 +5,6 @@
     "moduleResolution": "NodeNext",
     "lib": ["ES2022"],
     "outDir": "dist",
-    "rootDir": "src",
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
@@ -15,8 +14,9 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "declaration": false,
-    "sourceMap": true
+    "sourceMap": true,
+    "types": ["node"]
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "tests/**/*"],
   "exclude": ["node_modules", "dist"]
 }

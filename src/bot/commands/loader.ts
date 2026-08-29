@@ -2,7 +2,7 @@ import { readdir } from "node:fs/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
 import { Collection } from "discord.js";
-import { logger } from "../logger.js";
+import { logger } from "../../logger.js";
 import { isCommand, type Command } from "./_types.js";
 
 const here = dirname(fileURLToPath(import.meta.url));

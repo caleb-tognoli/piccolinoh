@@ -1,5 +1,5 @@
 import { Client, MessageFlags } from "discord.js";
-import { logger } from "../logger.js";
+import { logger } from "../../logger.js";
 
 export function registerInteractionCreate(client: Client): void {
   client.on("interactionCreate", async (interaction) => {

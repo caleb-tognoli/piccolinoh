@@ -1,0 +1,17 @@
+node_modules
+web/node_modules
+dist
+web/dist
+.env
+.env.local
+.git
+.gitignore
+.gitattributes
+.vscode
+.idea
+*.log
+Dockerfile
+docker-compose.yml
+README.md
+MIGRATION.md
+tests
