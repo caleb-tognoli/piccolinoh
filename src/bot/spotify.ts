@@ -127,18 +127,6 @@ interface AlbumApi {
     total: number;
   };
 }
-interface PlaylistItemApi {
-  track: TrackApi | null;
-}
-interface PlaylistApi {
-  name: string;
-  tracks: {
-    items: PlaylistItemApi[];
-    total: number;
-    next: string | null;
-  };
-}
-
 function mapTrack(t: TrackApi): SpotifyTrack {
   return {
     id: t.id,
@@ -174,20 +162,3 @@ export async function getAlbum(id: string): Promise<SpotifyCollection | null> {
   }
 }
 
-export async function getPlaylist(id: string): Promise<SpotifyCollection | null> {
-  try {
-    const res = await spotifyGet<PlaylistApi>(
-      `/playlists/${id}?fields=name,tracks(total,next,items(track(id,name,duration_ms,is_local,artists(name))))`,
-    );
-    if (!res?.name || !res.tracks?.items) return null;
-    const tracks = res.tracks.items
-      .map((it) => it?.track)
-      .filter((t): t is TrackApi => !!t && !t.is_local && !!t.id)
-      .slice(0, PLAYLIST_TRACK_CAP)
-      .map(mapTrack);
-    return { name: res.name, tracks, totalTracks: res.tracks.total ?? tracks.length };
-  } catch (err) {
-    if (err instanceof SpotifyNotFoundError) return null;
-    throw err;
-  }
-}

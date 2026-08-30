@@ -3,7 +3,6 @@ import { logger } from "../logger.js";
 import { getDb } from "./db/index.js";
 import {
   getAlbum,
-  getPlaylist,
   getTrack,
   isConfigured as isSpotifyConfigured,
   parseSpotifyUrl,
@@ -26,7 +25,11 @@ export type ResolveResult =
   | { ok: true; tracks: ResolvedTrack[]; sourceLabel?: string }
   | {
       ok: false;
-      reason: "not-found" | "error" | "spotify-not-configured";
+      reason:
+        | "not-found"
+        | "error"
+        | "spotify-not-configured"
+        | "spotify-playlist-unavailable";
       detail?: string;
     };
 
@@ -282,6 +285,16 @@ async function resolveSpotifyUrl(input: string): Promise<ResolveResult> {
   const parsed = parseSpotifyUrl(input);
   if (!parsed) return { ok: false, reason: "error", detail: "unrecognized Spotify URL" };
 
+  if (parsed.kind === "playlist") {
+    // GET /playlists/{id}/items requires the playlist-read-private OAuth
+    // scope (docs: developer.spotify.com/documentation/web-api/reference/
+    // get-playlists-items). Spotify replies "Valid user authentication
+    // required" to Client-Credentials requests, and /playlists/{id} omits
+    // the `tracks` field for Client-Credentials apps. Track lists need
+    // user OAuth — deferred to Later.
+    return { ok: false, reason: "spotify-playlist-unavailable" };
+  }
+
   if (parsed.kind === "track") {
     const meta = await getTrack(parsed.id);
     if (!meta) return { ok: false, reason: "not-found" };
@@ -289,8 +302,7 @@ async function resolveSpotifyUrl(input: string): Promise<ResolveResult> {
     return track ? { ok: true, tracks: [track] } : { ok: false, reason: "not-found" };
   }
 
-  const collection =
-    parsed.kind === "album" ? await getAlbum(parsed.id) : await getPlaylist(parsed.id);
+  const collection = await getAlbum(parsed.id);
   if (!collection || collection.tracks.length === 0) {
     return { ok: false, reason: "not-found" };
   }

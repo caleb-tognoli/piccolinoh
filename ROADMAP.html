@@ -81,7 +81,7 @@
 <h2>Later — worth remembering</h2>
 <p>Things worth naming so they don't get forgotten, but not slated to a phase yet.</p>
 <ul>
-  <li class="stretch"><strong><code>/thisis &lt;artist&gt;</code> (deferred from P4).</strong> Spotify's late-2024 platform change blocks Client-Credentials apps from reading Spotify-curated playlists (all <code>37i9dQZ…</code> IDs — including every "This Is …"). Revisit once we're willing to take on per-user OAuth, or repurpose as artist-top-tracks when that endpoint becomes accessible.</li>
+  <li class="stretch"><strong>Spotify playlist URLs + <code>/thisis</code> (both deferred from P4).</strong> <code>GET /playlists/&lt;id&gt;/items</code> requires the <code>playlist-read-private</code> OAuth scope — Client-Credentials gets <code>"Valid user authentication required"</code> — and <code>/playlists/&lt;id&gt;</code> omits the <code>tracks</code> field for Client-Credentials apps. Fixing this needs user OAuth (per-user access tokens). Revisit alongside any broader Discord/Spotify OAuth work.</li>
   <li class="stretch"><strong>User permissions &amp; role model.</strong> View-only / controller / DJ split. The <code>control</code> WS message is the single axis to gate.</li>
   <li class="stretch"><strong>Vote-skip enforcement.</strong> <code>skipmode vote</code> already persists; gate <code>/skip</code> on a majority of active listeners once the permission model exists to say who counts.</li>
   <li class="stretch"><strong>DJ role enforcement.</strong> <code>skipmode dj</code> gates mutations on a Discord role. Needs <code>/settings djrole &lt;role&gt;</code>.</li>

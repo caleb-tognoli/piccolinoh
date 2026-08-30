@@ -61,22 +61,24 @@ destructive, just a one-time reprompt).
 ## Spotify (optional)
 
 Setting `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` in `.env` enables
-Spotify URL support in `/play`: track, album, and public playlist URLs.
-The bot fetches metadata from Spotify's Web API and translates every
-track to a YouTube video via a Lavalink `ytsearch:artist title` call.
-The YouTube video ID is what actually plays in the browser.
+Spotify **track and album** URL support in `/play`. The bot fetches
+metadata from Spotify's Web API and translates every track to a
+YouTube video via a Lavalink `ytsearch:artist title` call. The YouTube
+video ID is what actually plays in the browser.
 
 Credentials use Client Credentials (no user OAuth). Mint free at
 <https://developer.spotify.com/dashboard>. Leaving both empty turns
 Spotify off with a clean error on Spotify URL inputs; the YouTube path
 is unaffected.
 
-**Spotify-curated content is out of reach.** Since late 2024, Spotify's
-Client Credentials tier can't read Spotify-owned playlists (all
-`spotify:playlist:37i9dQZ…` URLs — "This Is …", "Today's Top Hits",
-Discover Weekly, etc.). User-created public playlists still work. That
-platform change is why the `/thisis` command from Phase 4 is deferred —
-Spotify's curated playlists are the specific data source it needed.
+**Playlists are out of reach.** Spotify's `GET /playlists/{id}/items`
+requires the `playlist-read-private` OAuth scope — Client Credentials
+gets `"Valid user authentication required"` — and `/playlists/{id}`
+omits the `tracks` field for Client-Credentials apps. This affects all
+playlists (user-created and Spotify-curated). Paste a Spotify **album**
+URL for a multi-track queue, or a **track** URL for a single track.
+Playlist URL support and the `/thisis` command are deferred pending
+user OAuth — see the roadmap.
 
 ## Setup
 
