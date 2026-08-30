@@ -86,6 +86,13 @@ async function getAccessToken(): Promise<string> {
   return cachedToken.token;
 }
 
+export class SpotifyNotFoundError extends Error {
+  constructor(public path: string) {
+    super(`Spotify resource not found: ${path}`);
+    this.name = "SpotifyNotFoundError";
+  }
+}
+
 async function spotifyGet<T>(path: string): Promise<T> {
   const token = await getAccessToken();
   const res = await fetch(`${API_BASE}${path}`, {
@@ -97,9 +104,11 @@ async function spotifyGet<T>(path: string): Promise<T> {
     const retry = await fetch(`${API_BASE}${path}`, {
       headers: { Authorization: `Bearer ${retryToken}` },
     });
+    if (retry.status === 404) throw new SpotifyNotFoundError(path);
     if (!retry.ok) throw new Error(`Spotify ${retry.status}: ${await retry.text()}`);
     return (await retry.json()) as T;
   }
+  if (res.status === 404) throw new SpotifyNotFoundError(path);
   if (!res.ok) throw new Error(`Spotify ${res.status}: ${await res.text()}`);
   return (await res.json()) as T;
 }
@@ -140,30 +149,45 @@ function mapTrack(t: TrackApi): SpotifyTrack {
 }
 
 export async function getTrack(id: string): Promise<SpotifyTrack | null> {
-  const res = await spotifyGet<TrackApi>(`/tracks/${id}`);
-  if (!res.id) return null;
-  return mapTrack(res);
+  try {
+    const res = await spotifyGet<TrackApi>(`/tracks/${id}`);
+    if (!res?.id) return null;
+    return mapTrack(res);
+  } catch (err) {
+    if (err instanceof SpotifyNotFoundError) return null;
+    throw err;
+  }
 }
 
 export async function getAlbum(id: string): Promise<SpotifyCollection | null> {
-  const res = await spotifyGet<AlbumApi>(`/albums/${id}`);
-  if (!res.name) return null;
-  const tracks = res.tracks.items
-    .filter((t) => !t.is_local && t.id)
-    .slice(0, PLAYLIST_TRACK_CAP)
-    .map(mapTrack);
-  return { name: res.name, tracks, totalTracks: res.tracks.total };
+  try {
+    const res = await spotifyGet<AlbumApi>(`/albums/${id}`);
+    if (!res?.name || !res.tracks?.items) return null;
+    const tracks = res.tracks.items
+      .filter((t): t is TrackApi => !!t && !t.is_local && !!t.id)
+      .slice(0, PLAYLIST_TRACK_CAP)
+      .map(mapTrack);
+    return { name: res.name, tracks, totalTracks: res.tracks.total ?? tracks.length };
+  } catch (err) {
+    if (err instanceof SpotifyNotFoundError) return null;
+    throw err;
+  }
 }
 
 export async function getPlaylist(id: string): Promise<SpotifyCollection | null> {
-  const res = await spotifyGet<PlaylistApi>(
-    `/playlists/${id}?fields=name,tracks(total,next,items(track(id,name,duration_ms,is_local,artists(name))))`,
-  );
-  if (!res.name) return null;
-  const tracks = res.tracks.items
-    .map((it) => it.track)
-    .filter((t): t is TrackApi => !!t && !t.is_local && !!t.id)
-    .slice(0, PLAYLIST_TRACK_CAP)
-    .map(mapTrack);
-  return { name: res.name, tracks, totalTracks: res.tracks.total };
+  try {
+    const res = await spotifyGet<PlaylistApi>(
+      `/playlists/${id}?fields=name,tracks(total,next,items(track(id,name,duration_ms,is_local,artists(name))))`,
+    );
+    if (!res?.name || !res.tracks?.items) return null;
+    const tracks = res.tracks.items
+      .map((it) => it?.track)
+      .filter((t): t is TrackApi => !!t && !t.is_local && !!t.id)
+      .slice(0, PLAYLIST_TRACK_CAP)
+      .map(mapTrack);
+    return { name: res.name, tracks, totalTracks: res.tracks.total ?? tracks.length };
+  } catch (err) {
+    if (err instanceof SpotifyNotFoundError) return null;
+    throw err;
+  }
 }
