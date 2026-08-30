@@ -54,16 +54,7 @@
   <li class="done">P3 — Discord bot wired to <code>watchtogether</code>, 9 slash commands, SQLite cache.</li>
   <li class="done">Lavalink swap — YouTube Data API replaced by local Lavalink resolver.</li>
   <li class="done">P4 — Multi-source resolution via LavaSrc + <code>/thisis</code>.</li>
-</ul>
-
-<h2>Phase 5 — Discord UX polish</h2>
-<p>Make the bot feel like a product instead of a CLI. The tentpole is dropping <code>/session</code> — Discord already knows who the user is; the join flow shouldn't need forms.</p>
-<ul>
-  <li><strong><code>/join</code> replaces <code>/session</code>.</strong> Bot replies with a plain Discord link that opens the user's default browser directly. No copy-paste, no join screen.</li>
-  <li><strong>Auto-set display name.</strong> The <code>/join</code> URL carries a bot-signed name token (short HMAC over <code>guildId + userId + displayName</code>). Browser skips the name prompt when a valid token is present.</li>
-  <li><strong>Prettier command output.</strong> Replace the plain-text replies with a small embed vocabulary — one style for "queued", one for state changes, one for errors. Consistent colors, footers, thumbnails.</li>
-  <li><strong>Minor utility commands.</strong> <code>/replay</code> (re-enqueue current), <code>/move &lt;from&gt; &lt;to&gt;</code> (queue reorder — protocol already supports it), <code>/history</code> (recently played), <code>/clear</code> (empty the queue).</li>
-  <li><strong>Autoplay-off toggle.</strong> <code>/settings autoplay &lt;on|off&gt;</code> stops <code>scheduleAdvance</code> from promoting the next track.</li>
+  <li class="done">P5 — Discord UX: <code>/join</code>, embed vocabulary, autoplay toggle, utility commands.</li>
 </ul>
 
 <h2>Phase 6 — Web UI &amp; UX</h2>
