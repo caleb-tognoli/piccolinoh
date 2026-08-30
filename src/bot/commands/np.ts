@@ -1,13 +1,7 @@
-import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
+import { SlashCommandBuilder } from "discord.js";
 import { getOrCreateSessionForGuild } from "../../watchtogether/index.js";
-import { getVideoMetadata } from "../resolver.js";
+import { error, nowPlaying } from "../embeds.js";
 import type { Command } from "./_types.js";
-
-function formatDuration(sec: number): string {
-  const m = Math.floor(sec / 60);
-  const s = Math.floor(sec % 60);
-  return `${m}:${s.toString().padStart(2, "0")}`;
-}
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -22,21 +16,11 @@ const command: Command = {
     }
     const session = getOrCreateSessionForGuild(interaction.guildId);
     if (!session.current) {
-      await interaction.reply({ content: "Nothing playing.", ephemeral: true });
+      await interaction.reply({ embeds: [error("Nothing playing.")], ephemeral: true });
       return;
     }
-    const meta = getVideoMetadata(session.current.videoId);
-    const embed = new EmbedBuilder().setColor(0xe8935c);
-    if (meta) {
-      embed
-        .setTitle(meta.title)
-        .setDescription(`${meta.author} · ${formatDuration(session.current.durationSec)}`);
-    } else {
-      embed
-        .setTitle(session.current.videoId)
-        .setDescription(formatDuration(session.current.durationSec));
-    }
-    await interaction.reply({ embeds: [embed] });
+    const paused = session.current.pausedAtPositionSec != null;
+    await interaction.reply({ embeds: [nowPlaying(session.current, paused)] });
   },
 };
 

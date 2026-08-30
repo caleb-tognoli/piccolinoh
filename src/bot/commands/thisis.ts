@@ -5,6 +5,7 @@ import {
   getOrCreateSessionForGuild,
   serializeForClient,
 } from "../../watchtogether/index.js";
+import { error as errorEmbed, queuedPlaylist } from "../embeds.js";
 import { ensureNowPlaying } from "../nowPlaying.js";
 import { resolveInput } from "../resolver.js";
 import { findThisIsPlaylistUrl, isConfigured } from "../spotify.js";
@@ -43,15 +44,15 @@ const command: Command = {
       lookup = await findThisIsPlaylistUrl(artist);
     } catch (err) {
       logger.error({ err, artist }, "findThisIsPlaylistUrl failed");
-      await interaction.editReply(
-        `Error looking up Spotify: ${(err as Error).message}`,
-      );
+      await interaction.editReply({
+        embeds: [errorEmbed(`Error looking up Spotify: ${(err as Error).message}`)],
+      });
       return;
     }
     if (!lookup) {
-      await interaction.editReply(
-        `No "This Is …" playlist found for **${artist}**.`,
-      );
+      await interaction.editReply({
+        embeds: [errorEmbed(`No "This Is …" playlist found for ${artist}.`)],
+      });
       return;
     }
 
@@ -63,7 +64,7 @@ const command: Command = {
           : result.reason === "spotify-not-configured"
             ? "Spotify integration not configured — see README."
             : `Error: ${result.detail ?? "unknown"}`;
-      await interaction.editReply(message);
+      await interaction.editReply({ embeds: [errorEmbed(message)] });
       return;
     }
 
@@ -80,9 +81,11 @@ const command: Command = {
       );
     }
 
-    await interaction.editReply(
-      `Queued ${result.tracks.length} tracks from **This Is ${lookup.artistDisplayName}**`,
-    );
+    await interaction.editReply({
+      embeds: [
+        queuedPlaylist(result.tracks.length, `This Is ${lookup.artistDisplayName}`),
+      ],
+    });
 
     try {
       await ensureNowPlaying(

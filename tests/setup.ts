@@ -8,6 +8,7 @@ process.env["DISCORD_CLIENT_ID"] ??= "111111111111111111";
 process.env["DISCORD_GUILD_ID"] ??= "222222222222222222";
 process.env["LAVALINK_URL"] ??= "http://lavalink:2333";
 process.env["LAVALINK_PASSWORD"] ??= "test-password";
+process.env["JOIN_TOKEN_SECRET"] ??= "test-secret-that-is-at-least-32-characters-long";
 process.env["HTTP_PORT"] ??= "3000";
 process.env["PUBLIC_BASE_URL"] ??= "http://localhost:3000";
 process.env["SQLITE_PATH"] ??= ":memory:";

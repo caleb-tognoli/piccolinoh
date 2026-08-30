@@ -19,11 +19,16 @@ export const controlActionSchema = z.discriminatedUnion("kind", [
     from: z.number().int().min(0),
     to: z.number().int().min(0),
   }),
+  z.object({ kind: z.literal("clear") }),
 ]);
 export type ControlAction = z.infer<typeof controlActionSchema>;
 
 export const clientMessageSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("hello"), sessionToken: z.string().min(1) }),
+  z.object({
+    type: z.literal("hello"),
+    sessionToken: z.string().min(1),
+    joinToken: z.string().min(1).optional(),
+  }),
   z.object({ type: z.literal("ping"), t0: z.number() }),
   z.object({ type: z.literal("requestState") }),
   z.object({ type: z.literal("control"), action: controlActionSchema }),

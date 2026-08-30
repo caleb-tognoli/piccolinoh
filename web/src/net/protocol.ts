@@ -15,6 +15,7 @@ export interface CurrentTrack {
 export interface SessionSettings {
   skipMode: "anyone" | "vote" | "dj";
   voteThreshold: number;
+  autoplay: boolean;
 }
 
 export interface SerializedSession {
@@ -34,10 +35,11 @@ export type ControlAction =
   | { kind: "seek"; toSec: number }
   | { kind: "enqueue"; videoId: string; durationSec: number }
   | { kind: "remove"; index: number }
-  | { kind: "reorder"; from: number; to: number };
+  | { kind: "reorder"; from: number; to: number }
+  | { kind: "clear" };
 
 export type ClientMessage =
-  | { type: "hello"; sessionToken: string }
+  | { type: "hello"; sessionToken: string; joinToken?: string }
   | { type: "ping"; t0: number }
   | { type: "requestState" }
   | { type: "control"; action: ControlAction }

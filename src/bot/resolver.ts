@@ -265,15 +265,19 @@ export async function resolveInput(input: string): Promise<ResolveResult> {
 export function getGuildSetting(guildId: string): {
   skipmode: string;
   voteThreshold: number;
+  autoplay: boolean;
 } {
   const row = getDb()
     .prepare(
-      "SELECT skipmode, vote_threshold FROM guild_settings WHERE guild_id = ?",
+      "SELECT skipmode, vote_threshold, autoplay FROM guild_settings WHERE guild_id = ?",
     )
-    .get(guildId) as { skipmode: string; vote_threshold: number } | undefined;
+    .get(guildId) as
+    | { skipmode: string; vote_threshold: number; autoplay: number }
+    | undefined;
   return {
     skipmode: row?.skipmode ?? "anyone",
     voteThreshold: row?.vote_threshold ?? 0.5,
+    autoplay: row ? row.autoplay !== 0 : true,
   };
 }
 
@@ -286,6 +290,14 @@ export function setGuildSkipmode(
       "INSERT INTO guild_settings (guild_id, skipmode) VALUES (?, ?) ON CONFLICT(guild_id) DO UPDATE SET skipmode = excluded.skipmode",
     )
     .run(guildId, mode);
+}
+
+export function setGuildAutoplay(guildId: string, on: boolean): void {
+  getDb()
+    .prepare(
+      "INSERT INTO guild_settings (guild_id, autoplay) VALUES (?, ?) ON CONFLICT(guild_id) DO UPDATE SET autoplay = excluded.autoplay",
+    )
+    .run(guildId, on ? 1 : 0);
 }
 
 export function getVideoMetadata(

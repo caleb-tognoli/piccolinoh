@@ -1,5 +1,7 @@
 import { SlashCommandBuilder } from "discord.js";
-import { setGuildSkipmode } from "../resolver.js";
+import { updateSessionSettingsForGuild } from "../../watchtogether/index.js";
+import { error, ok } from "../embeds.js";
+import { setGuildAutoplay, setGuildSkipmode } from "../resolver.js";
 import type { Command } from "./_types.js";
 
 const command: Command = {
@@ -10,7 +12,7 @@ const command: Command = {
     .addSubcommand((sc) =>
       sc
         .setName("skipmode")
-        .setDescription("Who can skip tracks (enforcement lands in a later phase)")
+        .setDescription("Who can skip tracks (enforcement lands later)")
         .addStringOption((o) =>
           o
             .setName("mode")
@@ -21,6 +23,18 @@ const command: Command = {
               { name: "vote", value: "vote" },
               { name: "dj", value: "dj" },
             ),
+        ),
+    )
+    .addSubcommand((sc) =>
+      sc
+        .setName("autoplay")
+        .setDescription("Automatically play the next queued track when one ends")
+        .addStringOption((o) =>
+          o
+            .setName("state")
+            .setDescription("on | off")
+            .setRequired(true)
+            .addChoices({ name: "on", value: "on" }, { name: "off", value: "off" }),
         ),
     ),
 
@@ -34,12 +48,25 @@ const command: Command = {
       const mode = interaction.options.getString("mode", true) as "anyone" | "vote" | "dj";
       setGuildSkipmode(interaction.guildId, mode);
       await interaction.reply({
-        content: `Skip mode set to \`${mode}\` (enforcement lands in Phase 4).`,
+        embeds: [
+          ok("Skip mode set", `\`${mode}\` — enforcement lands in a later phase.`),
+        ],
         ephemeral: true,
       });
       return;
     }
-    await interaction.reply({ content: "Unknown subcommand.", ephemeral: true });
+    if (sub === "autoplay") {
+      const state = interaction.options.getString("state", true) as "on" | "off";
+      const on = state === "on";
+      setGuildAutoplay(interaction.guildId, on);
+      updateSessionSettingsForGuild(interaction.guildId, { autoplay: on });
+      await interaction.reply({
+        embeds: [ok("Autoplay", on ? "On" : "Off")],
+        ephemeral: true,
+      });
+      return;
+    }
+    await interaction.reply({ embeds: [error("Unknown subcommand.")], ephemeral: true });
   },
 };
 

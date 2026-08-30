@@ -48,6 +48,16 @@ The only knob is `LAVALINK_PASSWORD`: pick any non-empty string in
 Only the compose network sees the port (`2333`) — it is not exposed on
 the host.
 
+## Join tokens
+
+`JOIN_TOKEN_SECRET` (required) signs the token embedded in every
+`/join` URL. Set it to any random string ≥ 32 characters — e.g.
+`openssl rand -hex 32`. The secret never leaves the server; the browser
+just carries the signed blob and hands it back to the state server on
+its WebSocket `hello`. Rotating it invalidates all outstanding join
+links (users get bumped to the manual name prompt on next join — not
+destructive, just a one-time reprompt).
+
 ## Spotify (optional)
 
 Setting `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` in `.env` enables
@@ -90,7 +100,9 @@ youtube-plugin JAR on cold start (a few seconds); it is not persisted.
 
 In Discord:
 
-- `/session` — posts a join link. Open it in a browser, click **Join & start**.
+- `/join` — replies with an **ephemeral** join link. Opens in your
+  default browser; your Discord display name is carried through a
+  short-lived signed token, so no name prompt.
 - `/play <query or URL>` — enqueues a track. Accepts a text search, a
   YouTube URL, or (with Spotify configured) a Spotify track / album /
   playlist URL. Now-playing embed pins in the channel you invoked from.
@@ -98,8 +110,14 @@ In Discord:
   that artist. Requires Spotify credentials.
 - `/pause`, `/resume`, `/skip`, `/queue`, `/remove <n>`, `/np` — do
   what they say.
+- `/replay` — re-queue the currently playing track.
+- `/move <from> <to>` — reorder the queue (1-based positions).
+- `/history` — recently played tracks in this session.
+- `/clear` — empty the queue without stopping the current track.
 - `/settings skipmode <anyone|vote|dj>` — stored today; enforcement is
   on the Later list.
+- `/settings autoplay <on|off>` — when off, playback stops after each
+  track instead of auto-advancing.
 
 To stop:
 

@@ -15,6 +15,7 @@ const schema = z
     LAVALINK_PASSWORD: z.string().min(1, "LAVALINK_PASSWORD is required"),
     PUBLIC_BASE_URL: z.string().url().default("http://localhost:3000"),
     SQLITE_PATH: z.string().min(1).default("./data/piccolinoh.db"),
+    JOIN_TOKEN_SECRET: z.string().min(32, "JOIN_TOKEN_SECRET must be at least 32 characters"),
     SPOTIFY_CLIENT_ID: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
     SPOTIFY_CLIENT_SECRET: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
     NODE_ENV: z.enum(["development", "production", "test"]).default("development"),

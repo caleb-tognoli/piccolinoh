@@ -29,6 +29,22 @@ export function advance(session: Session): void {
   session.epoch += 1;
 }
 
+export function autoAdvance(session: Session): void {
+  if (session.settings.autoplay) {
+    advance(session);
+    return;
+  }
+  if (!session.current) return;
+  session.history.push({
+    videoId: session.current.videoId,
+    durationSec: session.current.durationSec,
+    requestedBy: session.current.requestedBy,
+  });
+  session.current = undefined;
+  session.errorTally.clear();
+  session.epoch += 1;
+}
+
 export function scheduleAdvance(session: Session, onAdvance: (s: Session) => void): void {
   if (session.advanceTimer) {
     clearTimeout(session.advanceTimer);
@@ -40,7 +56,7 @@ export function scheduleAdvance(session: Session, onAdvance: (s: Session) => voi
   const remainingMs = Math.max(0, (session.current.durationSec - derivePosition(session, now)) * 1000);
   session.advanceTimer = setTimeout(() => {
     session.advanceTimer = undefined;
-    advance(session);
+    autoAdvance(session);
     onAdvance(session);
     scheduleAdvance(session, onAdvance);
   }, remainingMs);

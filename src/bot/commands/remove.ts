@@ -1,5 +1,7 @@
 import { SlashCommandBuilder } from "discord.js";
 import { applyControl, getOrCreateSessionForGuild } from "../../watchtogether/index.js";
+import { error, ok } from "../embeds.js";
+import { getVideoMetadata } from "../resolver.js";
 import type { Command } from "./_types.js";
 
 const command: Command = {
@@ -25,14 +27,15 @@ const command: Command = {
     const session = getOrCreateSessionForGuild(interaction.guildId);
     if (index < 0 || index >= session.queue.length) {
       await interaction.reply({
-        content: `No track at position ${position}.`,
+        embeds: [error(`No track at position ${position}.`)],
         ephemeral: true,
       });
       return;
     }
     const removed = session.queue[index];
+    const title = removed ? (getVideoMetadata(removed.videoId)?.title ?? removed.videoId) : `#${position}`;
     applyControl(session, { kind: "remove", index }, interaction.user.id);
-    await interaction.reply(`Removed \`${removed?.videoId ?? position}\` from the queue.`);
+    await interaction.reply({ embeds: [ok("Removed", title)] });
   },
 };
 

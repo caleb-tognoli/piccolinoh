@@ -88,8 +88,15 @@ export function applyControl(
       emitQueueChanged(session);
       return;
     }
+    case "clear": {
+      if (session.queue.length === 0) return;
+      session.queue = [];
+      emitQueueChanged(session);
+      return;
+    }
   }
 }
+
 
 export function handlePlaybackError(
   session: Session,

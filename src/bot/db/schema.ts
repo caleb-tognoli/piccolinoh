@@ -16,7 +16,8 @@ CREATE TABLE IF NOT EXISTS video_cache (
 CREATE TABLE IF NOT EXISTS guild_settings (
   guild_id TEXT PRIMARY KEY,
   skipmode TEXT NOT NULL DEFAULT 'anyone',
-  vote_threshold REAL NOT NULL DEFAULT 0.5
+  vote_threshold REAL NOT NULL DEFAULT 0.5,
+  autoplay INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS thisis_cache (

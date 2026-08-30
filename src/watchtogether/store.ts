@@ -1,13 +1,33 @@
-import { createSession, type Session } from "./session.js";
+import { createSession, type Session, type SessionSettings } from "./session.js";
 
 const sessions = new Map<string, Session>();
 const guildIndex = new Map<string, string>();
 
+type SettingsLoader = (guildId: string) => Partial<SessionSettings>;
+
+let settingsLoader: SettingsLoader = () => ({});
+
+export function setSettingsLoader(fn: SettingsLoader): void {
+  settingsLoader = fn;
+}
+
 export function createSessionInStore(guildId: string): Session {
   const session = createSession(guildId);
+  Object.assign(session.settings, settingsLoader(guildId));
   sessions.set(session.id, session);
   guildIndex.set(guildId, session.id);
   return session;
+}
+
+export function updateSessionSettingsForGuild(
+  guildId: string,
+  patch: Partial<SessionSettings>,
+): void {
+  const sessionId = guildIndex.get(guildId);
+  if (!sessionId) return;
+  const session = sessions.get(sessionId);
+  if (!session) return;
+  Object.assign(session.settings, patch);
 }
 
 export function getSession(id: string): Session | undefined {

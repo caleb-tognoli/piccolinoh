@@ -12,6 +12,19 @@ import { getSession } from "./store.js";
 const HELLO_TIMEOUT_MS = 5_000;
 
 const clientIds = new WeakMap<WebSocket, string>();
+const displayNames = new WeakMap<WebSocket, string>();
+
+export interface JoinTokenVerifier {
+  (token: string, expected: { sid: string; gid: string }):
+    | { dn: string }
+    | null;
+}
+
+let verifier: JoinTokenVerifier | null = null;
+
+export function setJoinTokenVerifier(fn: JoinTokenVerifier | null): void {
+  verifier = fn;
+}
 
 function getClientId(ws: WebSocket): string {
   let id = clientIds.get(ws);
@@ -56,7 +69,10 @@ sessionEmitter.on("queueChanged", (session) => {
 });
 
 function broadcastPresence(session: Session): void {
-  const members = [...session.clients].map((ws) => ({ id: getClientId(ws) }));
+  const members = [...session.clients].map((ws) => {
+    const dn = displayNames.get(ws);
+    return dn ? { id: getClientId(ws), displayName: dn } : { id: getClientId(ws) };
+  });
   broadcast(session, JSON.stringify({ type: "presence", members }));
 }
 
@@ -86,6 +102,13 @@ export function attachSocket(ws: WebSocket): void {
         clearTimeout(helloTimer);
         ws.close(1008, "invalid session");
         return;
+      }
+      if (msg.joinToken && verifier) {
+        const verified = verifier(msg.joinToken, {
+          sid: session.id,
+          gid: session.guildId,
+        });
+        if (verified) displayNames.set(ws, verified.dn);
       }
       clearTimeout(helloTimer);
       getClientId(ws);

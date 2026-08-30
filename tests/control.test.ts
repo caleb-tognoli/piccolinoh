@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { applyControl } from "../src/watchtogether/control.js";
 import { createSession, type Session } from "../src/watchtogether/session.js";
+import { autoAdvance } from "../src/watchtogether/timeline.js";
 
 let session: Session;
 
@@ -64,5 +65,44 @@ describe("applyControl (extracted)", () => {
     applyControl(session, { kind: "remove", index: 5 });
     expect(session.queue.map((q) => q.videoId)).toEqual(["b"]);
     expect(session.epoch).toBe(before);
+  });
+
+  it("clear empties the queue and leaves current alone", () => {
+    applyControl(session, { kind: "enqueue", videoId: "a", durationSec: 10 });
+    applyControl(session, { kind: "enqueue", videoId: "b", durationSec: 20 });
+    applyControl(session, { kind: "enqueue", videoId: "c", durationSec: 30 });
+    const before = session.epoch;
+    applyControl(session, { kind: "clear" });
+    expect(session.current?.videoId).toBe("a");
+    expect(session.queue).toHaveLength(0);
+    expect(session.epoch).toBe(before);
+  });
+
+  it("clear on empty queue is a no-op", () => {
+    applyControl(session, { kind: "enqueue", videoId: "a", durationSec: 10 });
+    const before = session.epoch;
+    applyControl(session, { kind: "clear" });
+    expect(session.queue).toHaveLength(0);
+    expect(session.epoch).toBe(before);
+  });
+});
+
+describe("autoAdvance", () => {
+  it("with autoplay on: promotes queue head to current", () => {
+    applyControl(session, { kind: "enqueue", videoId: "a", durationSec: 10 });
+    applyControl(session, { kind: "enqueue", videoId: "b", durationSec: 20 });
+    autoAdvance(session);
+    expect(session.current?.videoId).toBe("b");
+    expect(session.history.map((h) => h.videoId)).toEqual(["a"]);
+  });
+
+  it("with autoplay off: retires current, leaves queue", () => {
+    session.settings.autoplay = false;
+    applyControl(session, { kind: "enqueue", videoId: "a", durationSec: 10 });
+    applyControl(session, { kind: "enqueue", videoId: "b", durationSec: 20 });
+    autoAdvance(session);
+    expect(session.current).toBeUndefined();
+    expect(session.queue.map((q) => q.videoId)).toEqual(["b"]);
+    expect(session.history.map((h) => h.videoId)).toEqual(["a"]);
   });
 });

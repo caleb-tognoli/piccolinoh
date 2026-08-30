@@ -9,6 +9,8 @@ export {
   getSession,
   destroySession,
   getOrCreateSessionForGuild,
+  setSettingsLoader,
+  updateSessionSettingsForGuild,
 } from "./store.js";
 export type {
   Session,
@@ -20,4 +22,6 @@ export type {
 export { serializeForClient } from "./session.js";
 export { applyControl, handlePlaybackError } from "./control.js";
 export { subscribeToSession } from "./events.js";
+export { setJoinTokenVerifier } from "./ws.js";
+export type { JoinTokenVerifier } from "./ws.js";
 export type { ControlAction } from "./protocol.js";

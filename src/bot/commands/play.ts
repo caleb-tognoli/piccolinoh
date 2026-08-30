@@ -5,6 +5,7 @@ import {
   getOrCreateSessionForGuild,
   serializeForClient,
 } from "../../watchtogether/index.js";
+import { error as errorEmbed, queued, queuedPlaylist } from "../embeds.js";
 import { ensureNowPlaying } from "../nowPlaying.js";
 import { resolveInput } from "../resolver.js";
 import type { Command } from "./_types.js";
@@ -38,7 +39,7 @@ const command: Command = {
           : result.reason === "spotify-not-configured"
             ? "Spotify integration not configured — see README."
             : `Error: ${result.detail ?? "unknown"}`;
-      await interaction.editReply(message);
+      await interaction.editReply({ embeds: [errorEmbed(message)] });
       return;
     }
 
@@ -59,10 +60,10 @@ const command: Command = {
 
     const first = result.tracks[0]!;
     const isSingle = result.tracks.length === 1 && !result.sourceLabel;
-    const reply = isSingle
-      ? `${wasEmpty ? "Playing" : "Queued"} **${first.title}** — ${first.author}`
-      : `Queued ${result.tracks.length} tracks from **${result.sourceLabel}**`;
-    await interaction.editReply(reply);
+    const embed = isSingle
+      ? queued(first, wasEmpty)
+      : queuedPlaylist(result.tracks.length, result.sourceLabel ?? "Playlist");
+    await interaction.editReply({ embeds: [embed] });
 
     try {
       await ensureNowPlaying(

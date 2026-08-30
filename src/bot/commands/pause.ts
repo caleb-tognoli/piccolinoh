@@ -1,5 +1,6 @@
 import { SlashCommandBuilder } from "discord.js";
 import { applyControl, getOrCreateSessionForGuild } from "../../watchtogether/index.js";
+import { error, ok } from "../embeds.js";
 import type { Command } from "./_types.js";
 
 const command: Command = {
@@ -15,15 +16,15 @@ const command: Command = {
     }
     const session = getOrCreateSessionForGuild(interaction.guildId);
     if (!session.current) {
-      await interaction.reply({ content: "Nothing to pause.", ephemeral: true });
+      await interaction.reply({ embeds: [error("Nothing to pause.")], ephemeral: true });
       return;
     }
     if (session.current.pausedAtPositionSec != null) {
-      await interaction.reply({ content: "Already paused.", ephemeral: true });
+      await interaction.reply({ embeds: [error("Already paused.")], ephemeral: true });
       return;
     }
     applyControl(session, { kind: "pause" }, interaction.user.id);
-    await interaction.reply("Paused.");
+    await interaction.reply({ embeds: [ok("Paused")] });
   },
 };
 

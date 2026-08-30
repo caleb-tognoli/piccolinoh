@@ -5,8 +5,8 @@ import type { Command } from "./_types.js";
 
 const command: Command = {
   data: new SlashCommandBuilder()
-    .setName("skip")
-    .setDescription("Skip the current track")
+    .setName("clear")
+    .setDescription("Empty the queue (does not stop the current track)")
     .setDMPermission(false),
 
   async execute(interaction) {
@@ -15,12 +15,15 @@ const command: Command = {
       return;
     }
     const session = getOrCreateSessionForGuild(interaction.guildId);
-    if (!session.current) {
-      await interaction.reply({ embeds: [error("Nothing to skip.")], ephemeral: true });
+    if (session.queue.length === 0) {
+      await interaction.reply({ embeds: [error("Queue is already empty.")], ephemeral: true });
       return;
     }
-    applyControl(session, { kind: "skip" }, interaction.user.id);
-    await interaction.reply({ embeds: [ok("Skipped")] });
+    const count = session.queue.length;
+    applyControl(session, { kind: "clear" }, interaction.user.id);
+    await interaction.reply({
+      embeds: [ok("Queue cleared", `${count} track${count === 1 ? "" : "s"} removed.`)],
+    });
   },
 };
 

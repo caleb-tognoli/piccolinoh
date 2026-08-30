@@ -12,8 +12,18 @@ export function openDb(path: string): DatabaseSync {
   db = new DatabaseSync(path);
   db.exec("PRAGMA journal_mode = WAL");
   db.exec(SCHEMA_SQL);
+  migrate(db);
   logger.info({ path }, "sqlite: opened");
   return db;
+}
+
+function migrate(db: DatabaseSync): void {
+  const cols = db.prepare("PRAGMA table_info(guild_settings)").all() as { name: string }[];
+  if (!cols.some((c) => c.name === "autoplay")) {
+    db.exec(
+      "ALTER TABLE guild_settings ADD COLUMN autoplay INTEGER NOT NULL DEFAULT 1",
+    );
+  }
 }
 
 export function getDb(): DatabaseSync {

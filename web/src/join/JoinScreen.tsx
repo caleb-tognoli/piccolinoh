@@ -5,30 +5,66 @@ import { displayName, phase, presence, serverOffset, session, wsClient } from ".
 
 const STATE_TIMEOUT_MS = 10_000;
 
+function parseHash(): { sessionToken: string; joinToken: string | null; presetName: string | null } {
+  const raw = location.hash.slice(1).trim();
+  if (!raw) return { sessionToken: "", joinToken: null, presetName: null };
+  const [sessionToken, ...rest] = raw.split("&");
+  let joinToken: string | null = null;
+  for (const part of rest) {
+    if (part.startsWith("t=")) joinToken = part.slice(2);
+  }
+  let presetName: string | null = null;
+  if (joinToken) {
+    // Peek at the token's payload for a display name so the input is prefilled
+    // instantly. The server does the real verification; the browser never
+    // trusts this value beyond the initial UI hint.
+    const parts = joinToken.split(".");
+    if (parts.length === 2 && parts[0]) {
+      try {
+        const pad = parts[0].length % 4 === 0 ? "" : "=".repeat(4 - (parts[0].length % 4));
+        const decoded = atob(parts[0].replace(/-/g, "+").replace(/_/g, "/") + pad);
+        const payload = JSON.parse(decoded) as { dn?: unknown };
+        if (typeof payload.dn === "string") presetName = payload.dn;
+      } catch {
+        // ignore — token might be malformed; fall back to manual entry
+      }
+    }
+  }
+  return { sessionToken: sessionToken ?? "", joinToken, presetName };
+}
+
 export function JoinScreen() {
-  const initialName = displayName.value === "Guest" ? "" : displayName.value;
+  const parsed = parseHash();
+  const hasToken = !!parsed.joinToken;
+  const initialName = parsed.presetName ?? (displayName.value === "Guest" ? "" : displayName.value);
   const [name, setName] = useState(initialName);
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const token = location.hash.slice(1).trim();
-
   const handleJoin = (): void => {
-    if (!token) {
+    if (!parsed.sessionToken) {
       setError("no session token in URL");
       return;
     }
     setJoining(true);
     setError(null);
-    displayName.value = name.trim() || "Guest";
+    displayName.value = (name.trim() || parsed.presetName || "Guest");
 
     const wsUrl = `${location.protocol.replace("http", "ws")}//${location.host}/ws`;
     const client = connect(wsUrl, {
       onOpen: () => {
-        client.send({ type: "hello", sessionToken: token });
+        client.send({
+          type: "hello",
+          sessionToken: parsed.sessionToken,
+          ...(parsed.joinToken ? { joinToken: parsed.joinToken } : {}),
+        });
       },
       onReconnect: () => {
-        client.send({ type: "hello", sessionToken: token });
+        client.send({
+          type: "hello",
+          sessionToken: parsed.sessionToken,
+          ...(parsed.joinToken ? { joinToken: parsed.joinToken } : {}),
+        });
       },
     });
 
@@ -42,10 +78,6 @@ export function JoinScreen() {
 
     client.on("state", (msg) => {
       window.clearTimeout(timeout);
-      // Seed serverOffset from the state message immediately so the shim's
-      // derivedPosition returns something sensible before clockSync's 5-ping
-      // median lands. Ignores one-way network latency (usually < 100 ms),
-      // which is well below the 2 s sync dead-zone.
       if (serverOffset.value === 0) {
         serverOffset.value = msg.serverMs - performance.now();
       }
@@ -67,19 +99,27 @@ export function JoinScreen() {
   return (
     <div class="join-screen">
       <h1>piccolinoh</h1>
-      <p>Join this listening session in your browser.</p>
-      {!token && <p class="error">No session token in URL. Paste the link with a `#&lt;token&gt;` suffix.</p>}
-      <label>
-        <span>Display name</span>
-        <input
-          type="text"
-          value={name}
-          placeholder="Guest"
-          onInput={(e) => setName((e.currentTarget as HTMLInputElement).value)}
-        />
-      </label>
-      <button onClick={handleJoin} disabled={joining || !token}>
-        {joining ? "Joining…" : "Join & start"}
+      {hasToken ? (
+        <p>Joining as <strong>{parsed.presetName ?? "you"}</strong>.</p>
+      ) : (
+        <p>Join this listening session in your browser.</p>
+      )}
+      {!parsed.sessionToken && (
+        <p class="error">No session token in URL. Paste the link with a `#&lt;token&gt;` suffix.</p>
+      )}
+      {!hasToken && (
+        <label>
+          <span>Display name</span>
+          <input
+            type="text"
+            value={name}
+            placeholder="Guest"
+            onInput={(e) => setName((e.currentTarget as HTMLInputElement).value)}
+          />
+        </label>
+      )}
+      <button onClick={handleJoin} disabled={joining || !parsed.sessionToken}>
+        {joining ? "Joining…" : hasToken ? "Tap to start" : "Join & start"}
       </button>
       {error && <p class="error">{error}</p>}
     </div>

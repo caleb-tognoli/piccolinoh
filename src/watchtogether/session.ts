@@ -18,6 +18,7 @@ export interface CurrentTrack {
 export interface SessionSettings {
   skipMode: "anyone" | "vote" | "dj";
   voteThreshold: number;
+  autoplay: boolean;
 }
 
 export interface Session {
@@ -46,7 +47,7 @@ export function createSession(guildId: string): Session {
     epoch: 0,
     queue: [],
     history: [],
-    settings: { skipMode: "anyone", voteThreshold: 0.5 },
+    settings: { skipMode: "anyone", voteThreshold: 0.5, autoplay: true },
     clients: new Set(),
     errorTally: new Map(),
   };
