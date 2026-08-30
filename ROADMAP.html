@@ -53,7 +53,7 @@
   <li class="done">P2 — Web client with synced YouTube player.</li>
   <li class="done">P3 — Discord bot wired to <code>watchtogether</code>, 9 slash commands, SQLite cache.</li>
   <li class="done">Lavalink swap — YouTube Data API replaced by local Lavalink resolver.</li>
-  <li class="done">P4 — Multi-source resolution via LavaSrc + <code>/thisis</code>.</li>
+  <li class="done">P4 — Multi-source resolution: Spotify URLs via bot-side Web API + <code>ytsearch:</code> translation. (LavaSrc dropped, <code>/thisis</code> deferred — see Later.)</li>
   <li class="done">P5 — Discord UX: <code>/join</code>, embed vocabulary, autoplay toggle, utility commands.</li>
 </ul>
 
@@ -81,6 +81,7 @@
 <h2>Later — worth remembering</h2>
 <p>Things worth naming so they don't get forgotten, but not slated to a phase yet.</p>
 <ul>
+  <li class="stretch"><strong><code>/thisis &lt;artist&gt;</code> (deferred from P4).</strong> Spotify's late-2024 platform change blocks Client-Credentials apps from reading Spotify-curated playlists (all <code>37i9dQZ…</code> IDs — including every "This Is …"). Revisit once we're willing to take on per-user OAuth, or repurpose as artist-top-tracks when that endpoint becomes accessible.</li>
   <li class="stretch"><strong>User permissions &amp; role model.</strong> View-only / controller / DJ split. The <code>control</code> WS message is the single axis to gate.</li>
   <li class="stretch"><strong>Vote-skip enforcement.</strong> <code>skipmode vote</code> already persists; gate <code>/skip</code> on a majority of active listeners once the permission model exists to say who counts.</li>
   <li class="stretch"><strong>DJ role enforcement.</strong> <code>skipmode dj</code> gates mutations on a Discord role. Needs <code>/settings djrole &lt;role&gt;</code>.</li>

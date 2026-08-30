@@ -61,21 +61,22 @@ destructive, just a one-time reprompt).
 ## Spotify (optional)
 
 Setting `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` in `.env` enables
-two things:
+Spotify URL support in `/play`: track, album, and public playlist URLs.
+The bot fetches metadata from Spotify's Web API and translates every
+track to a YouTube video via a Lavalink `ytsearch:artist title` call.
+The YouTube video ID is what actually plays in the browser.
 
-- **Spotify URLs in `/play`**: track, album, and playlist URLs. Handled
-  entirely by Lavalink's LavaSrc plugin — the bot never talks to
-  Spotify for URL resolution. Each Spotify track is translated to a
-  YouTube video (ISRC-first, falls back to title+artist search).
-- **`/thisis <artist>`**: enqueues Spotify's curated "This Is …"
-  playlist. The bot uses one Spotify search call to find the specific
-  playlist ID (LavaSrc's search prefixes are track-only), then hands
-  the resulting URL to the same resolution path.
+Credentials use Client Credentials (no user OAuth). Mint free at
+<https://developer.spotify.com/dashboard>. Leaving both empty turns
+Spotify off with a clean error on Spotify URL inputs; the YouTube path
+is unaffected.
 
-Both credentials go through Client Credentials — no user OAuth. Mint them
-free at <https://developer.spotify.com/dashboard>. Leaving both empty
-turns Spotify off with clean errors on the two commands above; the
-YouTube path is unaffected.
+**Spotify-curated content is out of reach.** Since late 2024, Spotify's
+Client Credentials tier can't read Spotify-owned playlists (all
+`spotify:playlist:37i9dQZ…` URLs — "This Is …", "Today's Top Hits",
+Discover Weekly, etc.). User-created public playlists still work. That
+platform change is why the `/thisis` command from Phase 4 is deferred —
+Spotify's curated playlists are the specific data source it needed.
 
 ## Setup
 
@@ -106,8 +107,6 @@ In Discord:
 - `/play <query or URL>` — enqueues a track. Accepts a text search, a
   YouTube URL, or (with Spotify configured) a Spotify track / album /
   playlist URL. Now-playing embed pins in the channel you invoked from.
-- `/thisis <artist>` — enqueues the Spotify "This Is …" playlist for
-  that artist. Requires Spotify credentials.
 - `/pause`, `/resume`, `/skip`, `/queue`, `/remove <n>`, `/np` — do
   what they say.
 - `/replay` — re-queue the currently playing track.

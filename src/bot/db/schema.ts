@@ -26,4 +26,10 @@ CREATE TABLE IF NOT EXISTS thisis_cache (
   artist_display TEXT NOT NULL,
   cached_at INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS spotify_track_cache (
+  spotify_track_id TEXT PRIMARY KEY,
+  video_id TEXT NOT NULL,
+  cached_at INTEGER NOT NULL
+);
 `;
