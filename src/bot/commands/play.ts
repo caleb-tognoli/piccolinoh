@@ -39,7 +39,7 @@ const command: Command = {
           : result.reason === "spotify-not-configured"
             ? "Spotify integration not configured — see README."
             : result.reason === "spotify-playlist-unavailable"
-              ? "Spotify playlist URLs aren't supported — Spotify blocks Client-Credentials apps from reading playlist tracks. Paste an album URL or a track URL instead."
+              ? "Couldn't read that Spotify playlist. If it's a Spotify-curated one (37i9dQZ…), set `SPOTIFY_SP_DC` in `.env` — see README."
               : `Error: ${result.detail ?? "unknown"}`;
       await interaction.editReply({ embeds: [errorEmbed(message)] });
       return;

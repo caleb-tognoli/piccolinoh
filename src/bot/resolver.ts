@@ -285,16 +285,6 @@ async function resolveSpotifyUrl(input: string): Promise<ResolveResult> {
   const parsed = parseSpotifyUrl(input);
   if (!parsed) return { ok: false, reason: "error", detail: "unrecognized Spotify URL" };
 
-  if (parsed.kind === "playlist") {
-    // GET /playlists/{id}/items requires the playlist-read-private OAuth
-    // scope (docs: developer.spotify.com/documentation/web-api/reference/
-    // get-playlists-items). Spotify replies "Valid user authentication
-    // required" to Client-Credentials requests, and /playlists/{id} omits
-    // the `tracks` field for Client-Credentials apps. Track lists need
-    // user OAuth — deferred to Later.
-    return { ok: false, reason: "spotify-playlist-unavailable" };
-  }
-
   if (parsed.kind === "track") {
     const meta = await getTrack(parsed.id);
     if (!meta) return { ok: false, reason: "not-found" };
@@ -302,18 +292,51 @@ async function resolveSpotifyUrl(input: string): Promise<ResolveResult> {
     return track ? { ok: true, tracks: [track] } : { ok: false, reason: "not-found" };
   }
 
-  const collection = await getAlbum(parsed.id);
-  if (!collection || collection.tracks.length === 0) {
-    return { ok: false, reason: "not-found" };
+  if (parsed.kind === "album") {
+    const collection = await getAlbum(parsed.id);
+    if (!collection || collection.tracks.length === 0) {
+      return { ok: false, reason: "not-found" };
+    }
+    const resolved = await pMap(
+      collection.tracks,
+      YT_TRANSLATION_CONCURRENCY,
+      resolveSpotifyTrack,
+    );
+    const tracks = resolved.filter((t): t is ResolvedTrack => t !== null);
+    if (tracks.length === 0) return { ok: false, reason: "not-found" };
+    return { ok: true, tracks, sourceLabel: collection.name };
   }
-  const resolved = await pMap(
-    collection.tracks,
+
+  // Playlist path: delegate to Lavalink's LavaSrc plugin. LavaSrc uses
+  // Spotify's web-player token flow (anonymous, or authenticated when
+  // SPOTIFY_SP_DC is set) which is the only auth surface where playlist
+  // items are readable without per-user OAuth. LavaSrc returns each track
+  // with Spotify metadata + a Spotify identifier; we run the same
+  // resolveSpotifyTrack fan-out that album/track use to translate to
+  // real YouTube video IDs.
+  let raw: LoadResult;
+  try {
+    raw = await loadTracks(input);
+  } catch (err) {
+    return { ok: false, reason: "spotify-playlist-unavailable", detail: (err as Error).message };
+  }
+  if (raw.kind !== "playlist") {
+    return { ok: false, reason: "spotify-playlist-unavailable" };
+  }
+  const spotifyTracks: SpotifyTrack[] = raw.tracks.map((t) => ({
+    id: t.info.identifier,
+    title: t.info.title,
+    artists: [t.info.author],
+    durationMs: t.info.length,
+  }));
+  const resolvedPl = await pMap(
+    spotifyTracks,
     YT_TRANSLATION_CONCURRENCY,
     resolveSpotifyTrack,
   );
-  const tracks = resolved.filter((t): t is ResolvedTrack => t !== null);
-  if (tracks.length === 0) return { ok: false, reason: "not-found" };
-  return { ok: true, tracks, sourceLabel: collection.name };
+  const plTracks = resolvedPl.filter((t): t is ResolvedTrack => t !== null);
+  if (plTracks.length === 0) return { ok: false, reason: "not-found" };
+  return { ok: true, tracks: plTracks, sourceLabel: raw.name };
 }
 
 export async function resolveInput(input: string): Promise<ResolveResult> {

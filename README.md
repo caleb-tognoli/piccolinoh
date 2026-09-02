@@ -61,24 +61,41 @@ destructive, just a one-time reprompt).
 ## Spotify (optional)
 
 Setting `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` in `.env` enables
-Spotify **track and album** URL support in `/play`. The bot fetches
-metadata from Spotify's Web API and translates every track to a
-YouTube video via a Lavalink `ytsearch:artist title` call. The YouTube
-video ID is what actually plays in the browser.
+Spotify **track**, **album**, and **user-created playlist** URLs in
+`/play`. Metadata comes from Spotify (Web API for tracks and albums,
+LavaSrc's web-player token path for playlists) and every track is
+translated to a YouTube video via a Lavalink `ytsearch:artist title`
+call — the YouTube video ID is what actually plays in the browser.
 
 Credentials use Client Credentials (no user OAuth). Mint free at
 <https://developer.spotify.com/dashboard>. Leaving both empty turns
 Spotify off with a clean error on Spotify URL inputs; the YouTube path
 is unaffected.
 
-**Playlists are out of reach.** Spotify's `GET /playlists/{id}/items`
-requires the `playlist-read-private` OAuth scope — Client Credentials
-gets `"Valid user authentication required"` — and `/playlists/{id}`
-omits the `tracks` field for Client-Credentials apps. This affects all
-playlists (user-created and Spotify-curated). Paste a Spotify **album**
-URL for a multi-track queue, or a **track** URL for a single track.
-Playlist URL support and the `/thisis` command are deferred pending
-user OAuth — see the roadmap.
+### Spotify-curated playlists (advanced, optional)
+
+Spotify-owned playlists (`spotify:playlist:37i9dQZ…` — "This Is …",
+"Today's Top Hits", Discover Weekly, editorial content) can only be
+read with an authenticated web-player session. To unlock them, extract
+the `sp_dc` cookie from a logged-in `open.spotify.com` browser session
+and put it in `.env` as `SPOTIFY_SP_DC`:
+
+1. Log into <https://open.spotify.com> in a browser.
+2. DevTools → Application (Chrome) / Storage (Firefox) → Cookies →
+   `https://open.spotify.com` → copy the value of `sp_dc`.
+3. Paste into `.env`: `SPOTIFY_SP_DC=<value>`.
+4. Restart Lavalink: `docker compose restart lavalink`.
+
+**Security note.** `sp_dc` is a session key — anyone holding it can
+act as that Spotify account (read library, follow/unfollow, etc.).
+Use a throwaway Spotify account for this, not your personal one. The
+cookie expires and can be revoked at any time; when that happens,
+curated playlists silently start failing and you re-extract.
+
+Leaving `SPOTIFY_SP_DC` empty is fine — user-created public playlists
+still work, only curated ones fail. `/thisis` is still deferred (finding
+the specific "This Is X" playlist URL for an arbitrary artist name is a
+separate problem from playing it).
 
 ## Setup
 

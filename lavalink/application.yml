@@ -6,6 +6,8 @@ lavalink:
   plugins:
     - dependency: "dev.lavalink.youtube:youtube-plugin:1.18.2"
       repository: "https://maven.lavalink.dev/releases"
+    - dependency: "com.github.topi314.lavasrc:lavasrc-plugin:4.8.3"
+      repository: "https://maven.lavalink.dev/releases"
   server:
     password: "${LAVALINK_PASSWORD}"
     sources:
@@ -44,6 +46,34 @@ plugins:
       - WEB
       - ANDROID_TESTSUITE
 
+  lavasrc:
+    # We only use LavaSrc for Spotify playlist URLs — its
+    # anonymous/web-player token path is what unlocks track lists
+    # for /playlists/{id}/items without a per-user OAuth flow. Track
+    # and album URLs still go through the bot's own Web API code
+    # (src/bot/spotify.ts) because the Client Credentials path there
+    # works and gives us tighter control over caching.
+    #
+    # spDc (optional) is a session cookie extracted from a logged-in
+    # open.spotify.com browser. When set, LavaSrc mints an authenticated
+    # web-player token instead of an anonymous one, which unlocks
+    # Spotify-curated playlists (37i9dQZ…). Without it, only
+    # user-created public playlists resolve.
+    sources:
+      spotify: true
+      applemusic: false
+      deezer: false
+      yandexmusic: false
+      flowerytts: false
+    providers:
+      - "ytsearch:%QUERY%"
+    spotify:
+      clientId: "${SPOTIFY_CLIENT_ID}"
+      clientSecret: "${SPOTIFY_CLIENT_SECRET}"
+      spDc: "${SPOTIFY_SP_DC:}"
+      countryCode: "US"
+      playlistLoadLimit: 1
+      albumLoadLimit: 1
 
 logging:
   level:
