@@ -1,7 +1,6 @@
 :root {
   --bg: #17181c;
   --panel: #1f2126;
-  --panel-2: #262930;
   --ink: #eae8e3;
   --muted: #8b8a86;
   --accent: #e8935c;
@@ -78,16 +77,6 @@ input:focus {
   color: var(--muted);
   margin: 0;
 }
-.join-screen label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  text-align: left;
-}
-.join-screen label span {
-  font-size: 0.85rem;
-  color: var(--muted);
-}
 .join-screen button {
   padding: 0.85rem;
   font-size: 1.05rem;
@@ -152,9 +141,7 @@ input:focus {
 .now-playing .empty {
   color: var(--muted);
 }
-.now-playing .video-id {
-  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
-  font-size: 0.9em;
+.now-playing .author {
   color: var(--muted);
 }
 
@@ -164,7 +151,7 @@ input:focus {
   gap: 0.5rem;
   align-items: center;
 }
-.controls .empty-controls {
+.controls.empty {
   color: var(--muted);
   margin: 0;
   font-size: 0.95rem;
@@ -179,45 +166,14 @@ input:focus {
   width: 6rem;
 }
 
-.dev-enqueue {
-  display: flex;
-  gap: 0.4rem;
-  align-items: center;
-  padding: 0.6rem 0.7rem;
-  border: 1px dashed var(--border);
-  border-radius: 4px;
-  background: var(--panel-2);
-  flex-basis: 100%;
-  margin-top: 0.3rem;
-}
-.dev-enqueue .dev-label {
-  font-size: 0.7rem;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  margin-right: 0.3rem;
-}
-.dev-enqueue input {
-  min-width: 0;
-}
-.dev-enqueue input[type="text"] {
-  flex: 2;
-}
-.dev-enqueue input[type="number"] {
-  flex: 1;
-  width: 7rem;
-}
-
 /* ---------- Queue + Members ---------- */
 
-.queue,
-.members {
+.panel {
   background: var(--panel);
   border-radius: 4px;
   padding: 0.85rem 0.9rem;
 }
-.queue h3,
-.members h3 {
+.panel h3 {
   font-size: 0.78rem;
   text-transform: uppercase;
   color: var(--muted);
@@ -238,10 +194,9 @@ input:focus {
 .queue li:first-child {
   border-top: none;
 }
-.queue .video-id {
+.queue .title {
   flex: 1;
-  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -261,16 +216,16 @@ input:focus {
   margin: 0.5rem 0 0;
   font-size: 0.9rem;
 }
-.members ul {
+.panel ul {
   margin: 0.55rem 0 0;
   padding: 0;
   list-style: none;
 }
-.members li {
+.panel ul li {
   padding: 0.3rem 0;
   border-top: 1px solid var(--border);
 }
-.members li:first-child {
+.panel ul li:first-child {
   border-top: none;
 }
 

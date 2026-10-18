@@ -1,88 +1,42 @@
 import { randomUUID } from "node:crypto";
 import { WebSocket } from "ws";
-import { logger } from "../logger.js";
+import { verifyJoinToken } from "../joinToken.js";
 import { applyControl, handlePlaybackError } from "./control.js";
-import { sessionEmitter } from "./events.js";
-import type { ClientMessage } from "./protocol.js";
 import { clientMessageSchema } from "./protocol.js";
-import type { Session } from "./session.js";
-import { serializeForClient } from "./session.js";
+import { onSessionChange, serializeForClient, type Session } from "./session.js";
 import { getSession } from "./store.js";
 
 const HELLO_TIMEOUT_MS = 5_000;
 
-const clientIds = new WeakMap<WebSocket, string>();
-const displayNames = new WeakMap<WebSocket, string>();
-
-export interface JoinTokenVerifier {
-  (token: string, expected: { sid: string; gid: string }):
-    | { dn: string }
-    | null;
+interface Client {
+  id: string;
+  displayName?: string;
 }
 
-let verifier: JoinTokenVerifier | null = null;
+const clients = new WeakMap<WebSocket, Client>();
 
-export function setJoinTokenVerifier(fn: JoinTokenVerifier | null): void {
-  verifier = fn;
+function send(ws: WebSocket, payload: unknown): void {
+  if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
 }
 
-function getClientId(ws: WebSocket): string {
-  let id = clientIds.get(ws);
-  if (!id) {
-    id = randomUUID();
-    clientIds.set(ws, id);
-  }
-  return id;
+function broadcast(session: Session, payload: unknown): void {
+  for (const ws of session.clients) send(ws, payload);
 }
 
-function sendJson(ws: WebSocket, payload: unknown): void {
-  if (ws.readyState !== WebSocket.OPEN) return;
-  try {
-    ws.send(JSON.stringify(payload));
-  } catch (err) {
-    logger.warn({ err }, "ws send failed");
-  }
+function stateMessage(session: Session) {
+  return { type: "state", session: serializeForClient(session), serverMs: Date.now() };
 }
-
-function broadcast(session: Session, msg: string): void {
-  for (const ws of session.clients) {
-    if (ws.readyState === WebSocket.OPEN) ws.send(msg);
-  }
-}
-
-sessionEmitter.on("stateChanged", (session) => {
-  broadcast(
-    session,
-    JSON.stringify({
-      type: "state",
-      session: serializeForClient(session),
-      serverMs: Date.now(),
-    }),
-  );
-});
-
-sessionEmitter.on("queueChanged", (session) => {
-  broadcast(
-    session,
-    JSON.stringify({ type: "queueUpdate", queue: session.queue }),
-  );
-});
 
 function broadcastPresence(session: Session): void {
-  const members = [...session.clients].map((ws) => {
-    const dn = displayNames.get(ws);
-    return dn ? { id: getClientId(ws), displayName: dn } : { id: getClientId(ws) };
-  });
-  broadcast(session, JSON.stringify({ type: "presence", members }));
+  const members = [...session.clients].map((ws) => clients.get(ws)!);
+  broadcast(session, { type: "presence", members });
 }
 
+onSessionChange((session) => broadcast(session, stateMessage(session)));
+
 export function attachSocket(ws: WebSocket): void {
-  let attached: { session: Session } | null = null;
-  const helloTimer = setTimeout(() => {
-    if (!attached && ws.readyState === WebSocket.OPEN) {
-      ws.close(1008, "no hello");
-    }
-  }, HELLO_TIMEOUT_MS);
+  let session: Session | undefined;
+  const helloTimer = setTimeout(() => ws.close(1008, "no hello"), HELLO_TIMEOUT_MS);
 
   ws.on("message", (raw: Buffer) => {
     let json: unknown;
@@ -93,63 +47,44 @@ export function attachSocket(ws: WebSocket): void {
     }
     const parsed = clientMessageSchema.safeParse(json);
     if (!parsed.success) return;
-    const msg: ClientMessage = parsed.data;
+    const msg = parsed.data;
 
     if (msg.type === "hello") {
-      if (attached) return;
-      const session = getSession(msg.sessionToken);
+      if (session) return;
+      clearTimeout(helloTimer);
+      session = getSession(msg.sessionId);
       if (!session) {
-        clearTimeout(helloTimer);
         ws.close(1008, "invalid session");
         return;
       }
-      if (msg.joinToken && verifier) {
-        const verified = verifier(msg.joinToken, {
-          sid: session.id,
-          gid: session.guildId,
-        });
-        if (verified) displayNames.set(ws, verified.dn);
-      }
-      clearTimeout(helloTimer);
-      getClientId(ws);
+      const displayName = msg.joinToken
+        ? verifyJoinToken(msg.joinToken, { sid: session.id, gid: session.guildId })
+        : null;
+      clients.set(ws, { id: randomUUID(), ...(displayName ? { displayName } : {}) });
       session.clients.add(ws);
-      attached = { session };
-      sendJson(ws, {
-        type: "state",
-        session: serializeForClient(session),
-        serverMs: Date.now(),
-      });
+      send(ws, stateMessage(session));
       broadcastPresence(session);
       return;
     }
 
-    if (!attached) return;
-    const session = attached.session;
-
+    if (!session) return;
     switch (msg.type) {
       case "ping":
-        sendJson(ws, { type: "pong", t0: msg.t0, serverMs: Date.now() });
-        return;
-      case "requestState":
-        sendJson(ws, {
-          type: "state",
-          session: serializeForClient(session),
-          serverMs: Date.now(),
-        });
+        send(ws, { type: "pong", t0: msg.t0, serverMs: Date.now() });
         return;
       case "control":
         applyControl(session, msg.action);
         return;
       case "playbackError":
-        handlePlaybackError(session, getClientId(ws), msg.videoId, msg.code);
+        handlePlaybackError(session, clients.get(ws)!.id, msg.videoId, msg.code);
         return;
     }
   });
 
   ws.on("close", () => {
     clearTimeout(helloTimer);
-    if (!attached) return;
-    attached.session.clients.delete(ws);
-    broadcastPresence(attached.session);
+    if (!session) return;
+    session.clients.delete(ws);
+    broadcastPresence(session);
   });
 }

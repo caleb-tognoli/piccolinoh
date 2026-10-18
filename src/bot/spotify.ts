@@ -1,164 +1,92 @@
+// Spotify Web API via Client Credentials — metadata only. Tracks are played by
+// searching YouTube for "<artist> <title>" (see resolver.ts).
 import { config } from "../config.js";
 
 const TOKEN_URL = "https://accounts.spotify.com/api/token";
 const API_BASE = "https://api.spotify.com/v1";
-const PLAYLIST_TRACK_CAP = 50;
+const ALBUM_TRACK_CAP = 50;
+const SPOTIFY_ID = "[A-Za-z0-9]{22}";
 
-interface CachedToken {
-  token: string;
-  expiresAt: number;
-}
-
-export interface SpotifyTrack {
-  id: string;
-  title: string;
-  artists: string[];
-  durationMs: number;
-}
-
-export interface SpotifyCollection {
-  name: string;
-  tracks: SpotifyTrack[];
-  totalTracks: number;
-}
-
-export interface ParsedSpotifyUrl {
+export interface SpotifyRef {
   kind: "track" | "album" | "playlist";
   id: string;
 }
 
-let cachedToken: CachedToken | null = null;
+export interface SpotifyTrack {
+  title: string;
+  artist?: string;
+}
 
-export function isConfigured(): boolean {
+interface TrackApi {
+  id: string | null;
+  name: string;
+  artists: { name: string }[];
+  is_local?: boolean;
+}
+
+export function spotifyEnabled(): boolean {
   return !!(config.SPOTIFY_CLIENT_ID && config.SPOTIFY_CLIENT_SECRET);
 }
 
-const SPOTIFY_ID_RE = /^[A-Za-z0-9]{22}$/;
-
-export function parseSpotifyUrl(input: string): ParsedSpotifyUrl | null {
+/** Accepts open.spotify.com links (optionally with an /intl-xx/ prefix) and spotify: URIs. */
+export function parseSpotifyUrl(input: string): SpotifyRef | null {
   const trimmed = input.trim();
-  const uriMatch = /^spotify:(track|album|playlist):([A-Za-z0-9]{22})$/.exec(trimmed);
-  if (uriMatch) return { kind: uriMatch[1] as ParsedSpotifyUrl["kind"], id: uriMatch[2]! };
-  try {
-    const url = new URL(trimmed);
-    if (url.hostname !== "open.spotify.com") return null;
-    const parts = url.pathname.split("/").filter(Boolean);
-    // Path shapes: /track/<id>, /album/<id>, /playlist/<id>, or /intl-<lang>/track/<id>
-    let kind: string | undefined;
-    let id: string | undefined;
-    for (let i = 0; i < parts.length; i++) {
-      const p = parts[i]!;
-      if (p === "track" || p === "album" || p === "playlist") {
-        kind = p;
-        id = parts[i + 1];
-        break;
-      }
-    }
-    if (!kind || !id) return null;
-    if (!SPOTIFY_ID_RE.test(id)) return null;
-    return { kind: kind as ParsedSpotifyUrl["kind"], id };
-  } catch {
-    return null;
-  }
+  const match =
+    new RegExp(`^spotify:(track|album|playlist):(${SPOTIFY_ID})$`).exec(trimmed) ??
+    new RegExp(
+      `^https?://open\\.spotify\\.com/(?:intl-[\\w-]+/)?(track|album|playlist)/(${SPOTIFY_ID})(?:[/?#]|$)`,
+    ).exec(trimmed);
+  return match ? { kind: match[1] as SpotifyRef["kind"], id: match[2]! } : null;
 }
 
-async function getAccessToken(): Promise<string> {
-  if (cachedToken && Date.now() + 60_000 < cachedToken.expiresAt) {
-    return cachedToken.token;
-  }
-  const creds = Buffer.from(
-    `${config.SPOTIFY_CLIENT_ID}:${config.SPOTIFY_CLIENT_SECRET}`,
-  ).toString("base64");
+let token: { value: string; expiresAt: number } | null = null;
+
+async function accessToken(): Promise<string> {
+  if (token && Date.now() + 60_000 < token.expiresAt) return token.value;
+  const creds = Buffer.from(`${config.SPOTIFY_CLIENT_ID}:${config.SPOTIFY_CLIENT_SECRET}`);
   const res = await fetch(TOKEN_URL, {
     method: "POST",
     headers: {
-      Authorization: `Basic ${creds}`,
+      Authorization: `Basic ${creds.toString("base64")}`,
       "Content-Type": "application/x-www-form-urlencoded",
     },
     body: "grant_type=client_credentials",
   });
   if (!res.ok) throw new Error(`Spotify token ${res.status}: ${await res.text()}`);
   const data = (await res.json()) as { access_token: string; expires_in: number };
-  cachedToken = {
-    token: data.access_token,
-    expiresAt: Date.now() + data.expires_in * 1000,
-  };
-  return cachedToken.token;
+  token = { value: data.access_token, expiresAt: Date.now() + data.expires_in * 1000 };
+  return token.value;
 }
 
-export class SpotifyNotFoundError extends Error {
-  constructor(public path: string) {
-    super(`Spotify resource not found: ${path}`);
-    this.name = "SpotifyNotFoundError";
-  }
-}
-
-async function spotifyGet<T>(path: string): Promise<T> {
-  const token = await getAccessToken();
+/** GET an API path; null on 404. Retries once with a fresh token on 401. */
+async function api<T>(path: string, retried = false): Promise<T | null> {
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${await accessToken()}` },
   });
-  if (res.status === 401) {
-    cachedToken = null;
-    const retryToken = await getAccessToken();
-    const retry = await fetch(`${API_BASE}${path}`, {
-      headers: { Authorization: `Bearer ${retryToken}` },
-    });
-    if (retry.status === 404) throw new SpotifyNotFoundError(path);
-    if (!retry.ok) throw new Error(`Spotify ${retry.status}: ${await retry.text()}`);
-    return (await retry.json()) as T;
+  if (res.status === 401 && !retried) {
+    token = null;
+    return api(path, true);
   }
-  if (res.status === 404) throw new SpotifyNotFoundError(path);
+  if (res.status === 404) return null;
   if (!res.ok) throw new Error(`Spotify ${res.status}: ${await res.text()}`);
   return (await res.json()) as T;
 }
 
-interface TrackApi {
-  id: string;
-  name: string;
-  duration_ms: number;
-  artists: Array<{ name: string }>;
-  is_local?: boolean;
-}
-interface AlbumApi {
-  name: string;
-  tracks: {
-    items: TrackApi[];
-    total: number;
-  };
-}
-function mapTrack(t: TrackApi): SpotifyTrack {
-  return {
-    id: t.id,
-    title: t.name,
-    artists: t.artists.map((a) => a.name).filter((s) => s.length > 0),
-    durationMs: t.duration_ms,
-  };
+function toTrack(t: TrackApi): SpotifyTrack {
+  return { title: t.name, artist: t.artists.find((a) => a.name)?.name };
 }
 
 export async function getTrack(id: string): Promise<SpotifyTrack | null> {
-  try {
-    const res = await spotifyGet<TrackApi>(`/tracks/${id}`);
-    if (!res?.id) return null;
-    return mapTrack(res);
-  } catch (err) {
-    if (err instanceof SpotifyNotFoundError) return null;
-    throw err;
-  }
+  const res = await api<TrackApi>(`/tracks/${id}`);
+  return res?.id ? toTrack(res) : null;
 }
 
-export async function getAlbum(id: string): Promise<SpotifyCollection | null> {
-  try {
-    const res = await spotifyGet<AlbumApi>(`/albums/${id}`);
-    if (!res?.name || !res.tracks?.items) return null;
-    const tracks = res.tracks.items
-      .filter((t): t is TrackApi => !!t && !t.is_local && !!t.id)
-      .slice(0, PLAYLIST_TRACK_CAP)
-      .map(mapTrack);
-    return { name: res.name, tracks, totalTracks: res.tracks.total ?? tracks.length };
-  } catch (err) {
-    if (err instanceof SpotifyNotFoundError) return null;
-    throw err;
-  }
+export async function getAlbum(id: string): Promise<{ name: string; tracks: SpotifyTrack[] } | null> {
+  const res = await api<{ name: string; tracks?: { items: (TrackApi | null)[] } }>(`/albums/${id}`);
+  if (!res?.name || !res.tracks?.items) return null;
+  const tracks = res.tracks.items
+    .filter((t): t is TrackApi => !!t?.id && !t.is_local)
+    .slice(0, ALBUM_TRACK_CAP)
+    .map(toTrack);
+  return { name: res.name, tracks };
 }
-

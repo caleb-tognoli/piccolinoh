@@ -1,6 +1,6 @@
 import { config } from "./config.js";
 import { logger } from "./logger.js";
-import { startServer } from "./watchtogether/index.js";
+import { startServer } from "./watchtogether/server.js";
 import { startBot } from "./bot/index.js";
 
 process.on("unhandledRejection", (reason) => {
@@ -14,7 +14,7 @@ process.on("uncaughtException", (err) => {
 try {
   await startServer(config.HTTP_PORT);
 } catch (err) {
-  logger.fatal({ err }, "watchtogether server failed to start");
+  logger.fatal({ err }, "web server failed to start");
   process.exit(1);
 }
 

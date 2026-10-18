@@ -1,124 +1,94 @@
 import { logger } from "../logger.js";
-import { sessionEmitter } from "./events.js";
-import type { ControlAction } from "./protocol.js";
-import type { Session } from "./session.js";
+import { notifySessionChange, type Session, type Track } from "./session.js";
 import { advance, derivePosition, scheduleAdvance } from "./timeline.js";
 
-function emitStateChanged(session: Session): void {
-  sessionEmitter.emit("stateChanged", session);
+export type ControlAction =
+  | { kind: "play" }
+  | { kind: "pause" }
+  | { kind: "skip" }
+  | { kind: "seek"; toSec: number }
+  | { kind: "enqueue"; tracks: Track[] }
+  | { kind: "remove"; index: number }
+  | { kind: "reorder"; from: number; to: number }
+  | { kind: "clear" };
+
+/** Call after changing what is playing or where: bumps the epoch, re-arms the end-of-track timer. */
+function timelineChanged(session: Session): void {
+  session.epoch += 1;
+  scheduleAdvance(session);
 }
 
-function emitQueueChanged(session: Session): void {
-  sessionEmitter.emit("queueChanged", session);
-}
-
-export function applyControl(
-  session: Session,
-  action: ControlAction,
-  requesterId: string = "anonymous",
-): void {
+export function applyControl(session: Session, action: ControlAction): void {
+  const { current, queue } = session;
   switch (action.kind) {
-    case "play": {
-      if (!session.current) return;
-      if (session.current.pausedAtPositionSec == null) return;
-      const now = Date.now();
-      session.current.startedAtServerMs = now - session.current.pausedAtPositionSec * 1000;
-      session.current.pausedAtPositionSec = undefined;
-      session.epoch += 1;
-      scheduleAdvance(session, emitStateChanged);
-      emitStateChanged(session);
-      return;
-    }
-    case "pause": {
-      if (!session.current || session.current.pausedAtPositionSec != null) return;
-      session.current.pausedAtPositionSec = derivePosition(session, Date.now());
-      session.epoch += 1;
-      scheduleAdvance(session, emitStateChanged);
-      emitStateChanged(session);
-      return;
-    }
-    case "skip": {
+    case "play":
+      if (current?.pausedAtPositionSec == null) return;
+      current.startedAtServerMs = Date.now() - current.pausedAtPositionSec * 1000;
+      current.pausedAtPositionSec = undefined;
+      timelineChanged(session);
+      break;
+    case "pause":
+      if (!current || current.pausedAtPositionSec != null) return;
+      current.pausedAtPositionSec = derivePosition(session);
+      timelineChanged(session);
+      break;
+    case "skip":
       advance(session);
-      scheduleAdvance(session, emitStateChanged);
-      emitStateChanged(session);
-      return;
-    }
+      scheduleAdvance(session);
+      break;
     case "seek": {
-      if (!session.current) return;
-      const clamped = Math.max(0, Math.min(action.toSec, session.current.durationSec));
-      if (session.current.pausedAtPositionSec != null) {
-        session.current.pausedAtPositionSec = clamped;
-      } else {
-        session.current.startedAtServerMs = Date.now() - clamped * 1000;
-      }
-      session.epoch += 1;
-      scheduleAdvance(session, emitStateChanged);
-      emitStateChanged(session);
-      return;
+      if (!current) return;
+      const toSec = Math.max(0, Math.min(action.toSec, current.durationSec));
+      if (current.pausedAtPositionSec != null) current.pausedAtPositionSec = toSec;
+      else current.startedAtServerMs = Date.now() - toSec * 1000;
+      timelineChanged(session);
+      break;
     }
     case "enqueue": {
-      const item = {
-        videoId: action.videoId,
-        durationSec: action.durationSec,
-        requestedBy: requesterId,
-      };
-      if (!session.current) {
-        session.current = { ...item, startedAtServerMs: Date.now() };
-        session.epoch += 1;
-        scheduleAdvance(session, emitStateChanged);
-        emitStateChanged(session);
-      } else {
-        session.queue.push(item);
-        emitQueueChanged(session);
+      if (action.tracks.length === 0) return;
+      queue.push(...action.tracks);
+      if (!current) {
+        advance(session);
+        scheduleAdvance(session);
       }
-      return;
+      break;
     }
-    case "remove": {
-      if (action.index >= session.queue.length) return;
-      session.queue.splice(action.index, 1);
-      emitQueueChanged(session);
-      return;
-    }
+    case "remove":
+      if (action.index >= queue.length) return;
+      queue.splice(action.index, 1);
+      break;
     case "reorder": {
       const { from, to } = action;
-      if (from >= session.queue.length || to >= session.queue.length) return;
-      const [item] = session.queue.splice(from, 1);
-      if (!item) return;
-      session.queue.splice(to, 0, item);
-      emitQueueChanged(session);
-      return;
+      if (from >= queue.length || to >= queue.length) return;
+      queue.splice(to, 0, ...queue.splice(from, 1));
+      break;
     }
-    case "clear": {
-      if (session.queue.length === 0) return;
-      session.queue = [];
-      emitQueueChanged(session);
-      return;
-    }
+    case "clear":
+      if (queue.length === 0) return;
+      queue.length = 0;
+      break;
   }
+  notifySessionChange(session);
 }
 
-
+/** Skips the current video once a majority of clients report it can't be embedded. */
 export function handlePlaybackError(
   session: Session,
   clientId: string,
   videoId: string,
   code: number,
 ): void {
-  if (!session.current || session.current.videoId !== videoId) return;
-  let set = session.errorTally.get(videoId);
-  if (!set) {
-    set = new Set();
-    session.errorTally.set(videoId, set);
+  if (session.current?.videoId !== videoId) return;
+  let reporters = session.errorTally.get(videoId);
+  if (!reporters) {
+    reporters = new Set();
+    session.errorTally.set(videoId, reporters);
   }
-  set.add(clientId);
-  const half = session.clients.size / 2;
-  if (set.size > half) {
-    logger.info(
-      { videoId, code, votes: set.size, clients: session.clients.size },
-      "auto-skip: majority reported embed-disabled",
-    );
-    advance(session);
-    scheduleAdvance(session, emitStateChanged);
-    emitStateChanged(session);
-  }
+  reporters.add(clientId);
+  if (reporters.size <= session.clients.size / 2) return;
+  logger.info(
+    { videoId, code, votes: reporters.size, clients: session.clients.size },
+    "auto-skip: majority reported embed-disabled",
+  );
+  applyControl(session, { kind: "skip" });
 }

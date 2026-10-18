@@ -1,8 +1,7 @@
 import { effect } from "@preact/signals";
-import { serverNow } from "../net/clockSync";
-import type { SerializedSession } from "../net/protocol";
-import type { WSClient } from "../net/ws";
-import { lagging, session, toast } from "../state/store";
+import { serverNow, type WSClient } from "./net";
+import type { SerializedSession } from "./protocol";
+import { lagging, session, toast } from "./store";
 
 const IFRAME_API_URL = "https://www.youtube.com/iframe_api";
 const SYNC_INTERVAL_MS = 2000;
@@ -10,6 +9,10 @@ const DEAD_ZONE_SEC = 2.0;
 const RECONCILE_GRACE_MS = 1000;
 const STALL_THRESHOLD_MS = 5000;
 const RECONCILE_TOAST_MS = 4000;
+// YT.PlayerState values
+const PLAYING = 1;
+const PAUSED = 2;
+const BUFFERING = 3;
 
 let apiReadyPromise: Promise<void> | null = null;
 
@@ -95,7 +98,7 @@ export async function attachPlayer(containerId: string, ws: WSClient): Promise<(
 
     // Same video, same paused state — only seek in response to a real
     // server-side epoch bump (e.g. a /seek control). For no-op session
-    // reference changes (queueUpdate merges, presence-driven re-renders),
+    // reference changes (queue edits, presence-driven re-renders),
     // leave drift correction to the 2 s sync loop.
     if (!epochBumped) return;
     const expected = derivedPosition(s);
@@ -111,8 +114,8 @@ export async function attachPlayer(containerId: string, ws: WSClient): Promise<(
     if (!s?.current) return;
 
     const serverPlaying = s.current.pausedAtPositionSec == null;
-    const localPlaying = state === 1;
-    const localPaused = state === 2;
+    const localPlaying = state === PLAYING;
+    const localPaused = state === PAUSED;
 
     const matches = (serverPlaying && localPlaying) || (!serverPlaying && localPaused);
     if (matches) {
@@ -174,7 +177,7 @@ export async function attachPlayer(containerId: string, ws: WSClient): Promise<(
           player.seekTo(expected, true);
         }
       }
-    } else if ((state === 1 || state === 3) && performance.now() - lastActualUpdateAt > STALL_THRESHOLD_MS) {
+    } else if ((state === PLAYING || state === BUFFERING) && performance.now() - lastActualUpdateAt > STALL_THRESHOLD_MS) {
       if (!lagging.value) {
         lagging.value = true;
         toast.value = "catching up to the room…";
@@ -182,7 +185,7 @@ export async function attachPlayer(containerId: string, ws: WSClient): Promise<(
       return;
     }
 
-    if (state !== 1 || lagging.value) return;
+    if (state !== PLAYING || lagging.value) return;
 
     const expected = derivedPosition(s);
     if (Math.abs(expected - actual) > DEAD_ZONE_SEC) {

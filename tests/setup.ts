@@ -1,14 +1,7 @@
-// Populate env vars that src/config.ts requires, so tests can import
-// modules that transitively load config.ts (e.g. logger, control) without
-// blowing up when the developer's .env lacks the newer Phase 3 keys.
-// dotenv (imported by config.ts) does not overwrite existing values, so
-// the developer's real .env still wins when tests are run interactively.
+// Env vars src/config.ts requires, so tests can import modules that load it.
+// dotenv doesn't overwrite existing values, so a developer's .env still wins.
 process.env["DISCORD_TOKEN"] ??= "test-token";
-process.env["DISCORD_CLIENT_ID"] ??= "111111111111111111";
 process.env["DISCORD_GUILD_ID"] ??= "222222222222222222";
-process.env["LAVALINK_URL"] ??= "http://lavalink:2333";
 process.env["LAVALINK_PASSWORD"] ??= "test-password";
 process.env["JOIN_TOKEN_SECRET"] ??= "test-secret-that-is-at-least-32-characters-long";
-process.env["HTTP_PORT"] ??= "3000";
-process.env["PUBLIC_BASE_URL"] ??= "http://localhost:3000";
-process.env["SQLITE_PATH"] ??= ":memory:";
+process.env["LOG_LEVEL"] ??= "warn";

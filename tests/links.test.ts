@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { youtubeVideoId } from "../src/bot/resolver.js";
 import { parseSpotifyUrl } from "../src/bot/spotify.js";
 
 describe("parseSpotifyUrl", () => {
@@ -36,5 +37,21 @@ describe("parseSpotifyUrl", () => {
 
   it("returns null for malformed Spotify IDs", () => {
     expect(parseSpotifyUrl("https://open.spotify.com/track/short")).toBeNull();
+  });
+});
+
+describe("youtubeVideoId", () => {
+  it("extracts ids from single-video links", () => {
+    expect(youtubeVideoId("https://www.youtube.com/watch?v=dQw4w9WgXcQ")).toBe("dQw4w9WgXcQ");
+    expect(youtubeVideoId("https://youtube.com/watch?v=dQw4w9WgXcQ&list=PL123")).toBe("dQw4w9WgXcQ");
+    expect(youtubeVideoId("https://music.youtube.com/watch?v=dQw4w9WgXcQ")).toBe("dQw4w9WgXcQ");
+    expect(youtubeVideoId("https://youtu.be/dQw4w9WgXcQ?t=42")).toBe("dQw4w9WgXcQ");
+    expect(youtubeVideoId("https://www.youtube.com/shorts/dQw4w9WgXcQ")).toBe("dQw4w9WgXcQ");
+  });
+
+  it("returns null for playlists, other sites and plain text", () => {
+    expect(youtubeVideoId("https://www.youtube.com/playlist?list=PL123")).toBeNull();
+    expect(youtubeVideoId("https://notyoutube.com/watch?v=dQw4w9WgXcQ")).toBeNull();
+    expect(youtubeVideoId("never gonna give you up")).toBeNull();
   });
 });

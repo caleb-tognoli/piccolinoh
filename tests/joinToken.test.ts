@@ -1,40 +1,32 @@
 import { describe, expect, it } from "vitest";
-import { signJoinToken, verifyJoinToken } from "../src/bot/joinToken.js";
+import { signJoinToken, verifyJoinToken } from "../src/joinToken.js";
 
-const base = { sid: "session-123", uid: "user-1", dn: "Alice", gid: "guild-42" };
+const base = { sid: "session-123", gid: "guild-42", dn: "Alice ✨" };
+const expected = { sid: base.sid, gid: base.gid };
+
+function flipLastChar(s: string): string {
+  return s.slice(0, -1) + (s.at(-1) === "A" ? "B" : "A");
+}
 
 describe("joinToken", () => {
-  it("verifies a freshly signed token", () => {
-    const token = signJoinToken(base);
-    const payload = verifyJoinToken(token, { sid: base.sid, gid: base.gid });
-    expect(payload).not.toBeNull();
-    expect(payload?.dn).toBe("Alice");
-    expect(payload?.uid).toBe("user-1");
+  it("verifies a freshly signed token and returns the display name", () => {
+    expect(verifyJoinToken(signJoinToken(base), expected)).toBe("Alice ✨");
   });
 
-  it("rejects a token whose payload has been tampered", () => {
-    const token = signJoinToken(base);
-    const [payload, sig] = token.split(".");
-    // Flip a bit in the payload — signature no longer matches.
-    const tampered = payload!.slice(0, -1) + (payload!.at(-1) === "A" ? "B" : "A") + "." + sig;
-    expect(verifyJoinToken(tampered, { sid: base.sid, gid: base.gid })).toBeNull();
+  it("rejects a tampered payload or signature", () => {
+    const [payload, sig] = signJoinToken(base).split(".") as [string, string];
+    expect(verifyJoinToken(`${flipLastChar(payload)}.${sig}`, expected)).toBeNull();
+    expect(verifyJoinToken(`${payload}.${flipLastChar(sig)}`, expected)).toBeNull();
+    expect(verifyJoinToken("garbage", expected)).toBeNull();
   });
 
-  it("rejects a token whose signature has been tampered", () => {
-    const token = signJoinToken(base);
-    const [payload, sig] = token.split(".");
-    const flipped = sig!.slice(0, -1) + (sig!.at(-1) === "A" ? "B" : "A");
-    expect(verifyJoinToken(payload + "." + flipped, { sid: base.sid, gid: base.gid })).toBeNull();
-  });
-
-  it("rejects a token whose sid or gid does not match", () => {
+  it("rejects a token for another session or guild", () => {
     const token = signJoinToken(base);
     expect(verifyJoinToken(token, { sid: "other", gid: base.gid })).toBeNull();
     expect(verifyJoinToken(token, { sid: base.sid, gid: "other" })).toBeNull();
   });
 
   it("rejects an expired token", () => {
-    const token = signJoinToken({ ...base, exp: Date.now() - 1_000 });
-    expect(verifyJoinToken(token, { sid: base.sid, gid: base.gid })).toBeNull();
+    expect(verifyJoinToken(signJoinToken({ ...base, exp: Date.now() - 1_000 }), expected)).toBeNull();
   });
 });

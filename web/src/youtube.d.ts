@@ -1,13 +1,4 @@
 declare namespace YT {
-  const PlayerState: {
-    UNSTARTED: -1;
-    ENDED: 0;
-    PLAYING: 1;
-    PAUSED: 2;
-    BUFFERING: 3;
-    CUED: 5;
-  };
-
   interface PlayerOptions {
     height?: string | number;
     width?: string | number;
@@ -32,7 +23,6 @@ declare namespace YT {
     seekTo(seconds: number, allowSeekAhead?: boolean): void;
     loadVideoById(options: { videoId: string; startSeconds?: number }): void;
     getCurrentTime(): number;
-    getDuration(): number;
     getPlayerState(): number;
     destroy(): void;
   }

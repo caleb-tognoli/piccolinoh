@@ -1,8 +1,6 @@
 services:
   piccolinoh:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    build: .
     container_name: piccolinoh
     restart: unless-stopped
     depends_on:
@@ -14,21 +12,15 @@ services:
     environment:
       NODE_ENV: production
       HTTP_PORT: 3000
-      SQLITE_PATH: /app/data/piccolinoh.db
       LAVALINK_URL: http://lavalink:2333
-      LAVALINK_PASSWORD: ${LAVALINK_PASSWORD}
-      SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID:-}
-      SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET:-}
-    volumes:
-      - piccolinoh_data:/app/data
 
+  # Search/metadata resolver only — no audio is ever streamed through it.
   lavalink:
     image: ghcr.io/lavalink-devs/lavalink:4
     container_name: piccolinoh-lavalink
     restart: unless-stopped
     environment:
       LAVALINK_PASSWORD: ${LAVALINK_PASSWORD}
-      SERVER_PORT: 2333
     volumes:
       - ./lavalink/application.yml:/opt/Lavalink/application.yml:ro
     healthcheck:
@@ -39,6 +31,3 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
-
-volumes:
-  piccolinoh_data:
