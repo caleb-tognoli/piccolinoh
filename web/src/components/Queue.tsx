@@ -1,9 +1,26 @@
 import { X } from "lucide-preact";
 import { formatSec } from "../lib/format";
-import { connected, sendControl, session } from "../store";
+import { connected, hideToast, sendControl, session, showToast } from "../store";
 import { Button } from "../ui/Button";
 import { Panel } from "../ui/Panel";
 import { Thumbnail } from "./Thumbnail";
+
+const UNDO_TOAST_MS = 6000;
+
+function removeTrack(index: number, title: string, videoId: string): void {
+  sendControl({ kind: "remove", index });
+  const text = `Removed “${title}”`;
+  showToast(text, {
+    durationMs: UNDO_TOAST_MS,
+    action: {
+      label: "Undo",
+      run: () => {
+        sendControl({ kind: "restore", videoId });
+        hideToast(text);
+      },
+    },
+  });
+}
 
 export function Queue() {
   const queue = session.value?.queue ?? [];
@@ -44,7 +61,7 @@ export function Queue() {
                 title="Remove"
                 disabled={!connected.value}
                 class="opacity-60 group-hover:opacity-100 focus-visible:opacity-100"
-                onClick={() => sendControl({ kind: "remove", index })}
+                onClick={() => removeTrack(index, track.title, track.videoId)}
               >
                 <X class="size-4" />
               </Button>

@@ -96,6 +96,21 @@ describe("state server protocol", () => {
     expect(state.session.queue).toHaveLength(0);
   });
 
+  it("lets a browser undo a removal but not restore arbitrary videos", async () => {
+    applyControl(session, { kind: "enqueue", tracks: [track("a", 60), track("b"), track("c")] });
+    const { ws } = await join();
+    const queueIs = (ids: string[]) =>
+      next(ws, (m) => m.type === "state" && m.session.queue.map((t: { videoId: string }) => t.videoId).join() === ids.join());
+    const removed = queueIs(["c"]);
+    ws.send(JSON.stringify({ type: "control", action: { kind: "remove", index: 0 } }));
+    await removed;
+    const restored = queueIs(["b", "c"]);
+    ws.send(JSON.stringify({ type: "control", action: { kind: "restore", videoId: "evil" } }));
+    ws.send(JSON.stringify({ type: "control", action: { kind: "restore", videoId: "b" } }));
+    await restored;
+    expect(session.queue.map((t) => t.videoId)).toEqual(["b", "c"]);
+  });
+
   it("shows the display name from a valid join token in presence", async () => {
     const token = signJoinToken({ sid: session.id, gid: session.guildId, dn: "Alice" });
     const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);

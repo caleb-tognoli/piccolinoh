@@ -27,7 +27,8 @@ export type ControlAction =
   | { kind: "pause" }
   | { kind: "skip" }
   | { kind: "seek"; toSec: number }
-  | { kind: "remove"; index: number };
+  | { kind: "remove"; index: number }
+  | { kind: "restore"; videoId: string };
 
 export type ClientMessage =
   | { type: "hello"; sessionId: string; joinToken?: string }

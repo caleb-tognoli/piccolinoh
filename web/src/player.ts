@@ -1,7 +1,7 @@
 import { effect } from "@preact/signals";
 import { trackPosition, type WSClient } from "./net";
 import type { SerializedSession } from "./protocol";
-import { lagging, session, toast } from "./store";
+import { hideToast, lagging, session, showToast } from "./store";
 
 const IFRAME_API_URL = "https://www.youtube.com/iframe_api";
 const SYNC_INTERVAL_MS = 2000;
@@ -9,6 +9,8 @@ const DEAD_ZONE_SEC = 2.0;
 const RECONCILE_GRACE_MS = 1000;
 const STALL_THRESHOLD_MS = 5000;
 const RECONCILE_TOAST_MS = 4000;
+const RECONCILE_TOAST = "Controls are shared. Use the buttons below, or leave the session to watch on your own.";
+const CATCHING_UP_TOAST = "Catching up to the room…";
 // YT.PlayerState values
 const PLAYING = 1;
 const PAUSED = 2;
@@ -132,11 +134,7 @@ export async function attachPlayer(containerId: string, ws: WSClient): Promise<(
       player.seekTo(derivedPosition(session.value), true);
       if (cur.pausedAtPositionSec == null) player.playVideo();
       else player.pauseVideo();
-      toast.value =
-        "controls are shared — use the buttons below, or leave the session to watch freely";
-      window.setTimeout(() => {
-        if (toast.value?.startsWith("controls")) toast.value = null;
-      }, RECONCILE_TOAST_MS);
+      showToast(RECONCILE_TOAST, { durationMs: RECONCILE_TOAST_MS });
     }, RECONCILE_GRACE_MS);
   }
 
@@ -169,7 +167,7 @@ export async function attachPlayer(containerId: string, ws: WSClient): Promise<(
       lastActualUpdateAt = performance.now();
       if (lagging.value) {
         lagging.value = false;
-        if (toast.value === "catching up to the room…") toast.value = null;
+        hideToast(CATCHING_UP_TOAST);
         const expected = derivedPosition(s);
         if (Math.abs(expected - actual) > DEAD_ZONE_SEC) {
           player.seekTo(expected, true);
@@ -178,7 +176,7 @@ export async function attachPlayer(containerId: string, ws: WSClient): Promise<(
     } else if ((state === PLAYING || state === BUFFERING) && performance.now() - lastActualUpdateAt > STALL_THRESHOLD_MS) {
       if (!lagging.value) {
         lagging.value = true;
-        toast.value = "catching up to the room…";
+        showToast(CATCHING_UP_TOAST);
       }
       return;
     }

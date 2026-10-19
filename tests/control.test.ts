@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import { applyControl, handlePlaybackError } from "../src/watchtogether/control.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { applyControl, handlePlaybackError, RESTORE_WINDOW_MS } from "../src/watchtogether/control.js";
 import { createSession, type Session } from "../src/watchtogether/session.js";
 import { track } from "./helpers.js";
 
@@ -11,6 +11,21 @@ beforeEach(() => {
 
 const enqueue = (...ids: string[]) =>
   applyControl(session, { kind: "enqueue", tracks: ids.map((id) => track(id)) });
+
+describe("restore window", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("restore is a no-op once the window has passed", () => {
+    vi.useFakeTimers();
+    enqueue("a", "b");
+    applyControl(session, { kind: "remove", index: 0 });
+    vi.advanceTimersByTime(RESTORE_WINDOW_MS + 1);
+    applyControl(session, { kind: "restore", videoId: "b" });
+    expect(session.queue).toHaveLength(0);
+  });
+});
 
 describe("applyControl", () => {
   it("enqueue on empty starts playback and bumps epoch", () => {
@@ -69,6 +84,30 @@ describe("applyControl", () => {
   it("remove out-of-range is a no-op", () => {
     enqueue("a", "b");
     applyControl(session, { kind: "remove", index: 5 });
+    expect(session.queue.map((q) => q.videoId)).toEqual(["b"]);
+  });
+
+  it("restore puts a removed track back where it was, once", () => {
+    enqueue("a", "b", "c", "d");
+    applyControl(session, { kind: "remove", index: 1 });
+    expect(session.queue.map((q) => q.videoId)).toEqual(["b", "d"]);
+    applyControl(session, { kind: "restore", videoId: "c" });
+    expect(session.queue.map((q) => q.videoId)).toEqual(["b", "c", "d"]);
+    applyControl(session, { kind: "restore", videoId: "c" });
+    expect(session.queue.map((q) => q.videoId)).toEqual(["b", "c", "d"]);
+  });
+
+  it("restore clamps to the end when the queue has shrunk", () => {
+    enqueue("a", "b", "c", "d");
+    applyControl(session, { kind: "remove", index: 2 });
+    applyControl(session, { kind: "clear" });
+    applyControl(session, { kind: "restore", videoId: "d" });
+    expect(session.queue.map((q) => q.videoId)).toEqual(["d"]);
+  });
+
+  it("restore ignores videos that were never removed", () => {
+    enqueue("a", "b");
+    applyControl(session, { kind: "restore", videoId: "evil" });
     expect(session.queue.map((q) => q.videoId)).toEqual(["b"]);
   });
 

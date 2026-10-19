@@ -27,9 +27,17 @@ export interface Session {
   clients: Set<WebSocket>;
   /** videoId -> client ids that reported the video as unembeddable. */
   errorTally: Map<string, Set<string>>;
+  /** Tracks removed from the queue lately, so a browser can undo a removal. Oldest first. */
+  recentlyRemoved: RemovedTrack[];
 }
 
-export type SerializedSession = Omit<Session, "advanceTimer" | "clients" | "errorTally">;
+export interface RemovedTrack {
+  track: Track;
+  index: number;
+  removedAtMs: number;
+}
+
+export type SerializedSession = Omit<Session, "advanceTimer" | "clients" | "errorTally" | "recentlyRemoved">;
 
 export function createSession(guildId: string): Session {
   return {
@@ -41,11 +49,12 @@ export function createSession(guildId: string): Session {
     autoplay: true,
     clients: new Set(),
     errorTally: new Map(),
+    recentlyRemoved: [],
   };
 }
 
 export function serializeForClient(session: Session): SerializedSession {
-  const { advanceTimer: _t, clients: _c, errorTally: _e, ...rest } = session;
+  const { advanceTimer: _t, clients: _c, errorTally: _e, recentlyRemoved: _r, ...rest } = session;
   return rest;
 }
 

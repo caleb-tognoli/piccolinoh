@@ -9,8 +9,13 @@ export type ControlAction =
   | { kind: "seek"; toSec: number }
   | { kind: "enqueue"; tracks: Track[] }
   | { kind: "remove"; index: number }
+  | { kind: "restore"; videoId: string }
   | { kind: "reorder"; from: number; to: number }
   | { kind: "clear" };
+
+/** How long a removed track can be put back with "restore". */
+export const RESTORE_WINDOW_MS = 30_000;
+const RESTORE_KEEP = 20;
 
 /** Call after changing what is playing or where: bumps the epoch, re-arms the end-of-track timer. */
 function timelineChanged(session: Session): void {
@@ -53,10 +58,23 @@ export function applyControl(session: Session, action: ControlAction): void {
       }
       break;
     }
-    case "remove":
+    case "remove": {
       if (action.index >= queue.length) return;
-      queue.splice(action.index, 1);
+      const [track] = queue.splice(action.index, 1);
+      session.recentlyRemoved.push({ track: track!, index: action.index, removedAtMs: Date.now() });
+      session.recentlyRemoved.splice(0, session.recentlyRemoved.length - RESTORE_KEEP);
       break;
+    }
+    case "restore": {
+      // Only puts back what was removed lately, so browsers still can't add arbitrary videos.
+      const cutoff = Date.now() - RESTORE_WINDOW_MS;
+      session.recentlyRemoved = session.recentlyRemoved.filter((r) => r.removedAtMs >= cutoff);
+      const at = session.recentlyRemoved.map((r) => r.track.videoId).lastIndexOf(action.videoId);
+      if (at === -1) return;
+      const [removed] = session.recentlyRemoved.splice(at, 1);
+      queue.splice(Math.min(removed!.index, queue.length), 0, removed!.track);
+      break;
+    }
     case "reorder": {
       const { from, to } = action;
       if (from >= queue.length || to >= queue.length) return;
