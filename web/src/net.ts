@@ -1,4 +1,4 @@
-import type { ClientMessage, ServerMessage } from "./protocol";
+import type { ClientMessage, CurrentTrack, ServerMessage } from "./protocol";
 import { connected, serverOffset } from "./store";
 
 type ServerType = ServerMessage["type"];
@@ -101,4 +101,10 @@ export function startClockSync(ws: WSClient): () => void {
 
 export function serverNow(): number {
   return performance.now() + serverOffset.value;
+}
+
+/** Where the room's timeline is in `track`, in seconds (unclamped). */
+export function trackPosition(track: CurrentTrack): number {
+  if (track.pausedAtPositionSec != null) return track.pausedAtPositionSec;
+  return (serverNow() - track.startedAtServerMs) / 1000;
 }

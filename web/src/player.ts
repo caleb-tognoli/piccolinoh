@@ -1,5 +1,5 @@
 import { effect } from "@preact/signals";
-import { serverNow, type WSClient } from "./net";
+import { trackPosition, type WSClient } from "./net";
 import type { SerializedSession } from "./protocol";
 import { lagging, session, toast } from "./store";
 
@@ -30,9 +30,7 @@ function ensureIframeApi(): Promise<void> {
 }
 
 function derivedPosition(s: SerializedSession | null): number {
-  if (!s?.current) return 0;
-  if (s.current.pausedAtPositionSec != null) return s.current.pausedAtPositionSec;
-  return (serverNow() - s.current.startedAtServerMs) / 1000;
+  return s?.current ? trackPosition(s.current) : 0;
 }
 
 export async function attachPlayer(containerId: string, ws: WSClient): Promise<() => void> {
