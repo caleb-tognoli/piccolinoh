@@ -1,5 +1,5 @@
 import type { ClientMessage, ServerMessage } from "./protocol";
-import { serverOffset } from "./store";
+import { connected, serverOffset } from "./store";
 
 type ServerType = ServerMessage["type"];
 type Handler<T extends ServerType> = (msg: Extract<ServerMessage, { type: T }>) => void;
@@ -28,6 +28,7 @@ export function connect(url: string, onOpen: () => void, onRejected: () => void)
     socket = new WebSocket(url);
     socket.addEventListener("open", () => {
       backoff = 250;
+      connected.value = true;
       onOpen();
     });
     socket.addEventListener("close", (ev) => {
@@ -37,6 +38,7 @@ export function connect(url: string, onOpen: () => void, onRejected: () => void)
         onRejected();
         return;
       }
+      connected.value = false;
       setTimeout(open, backoff);
       backoff = Math.min(5000, backoff * 2);
     });

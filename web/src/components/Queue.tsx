@@ -1,6 +1,6 @@
 import { X } from "lucide-preact";
 import { formatSec } from "../lib/format";
-import { sendControl, session } from "../store";
+import { connected, sendControl, session } from "../store";
 import { Button } from "../ui/Button";
 import { Panel } from "../ui/Panel";
 
@@ -28,6 +28,7 @@ export function Queue() {
                 icon
                 aria-label={`Remove ${track.title}`}
                 title="Remove"
+                disabled={!connected.value}
                 onClick={() => sendControl({ kind: "remove", index })}
               >
                 <X class="size-4" />

@@ -9,6 +9,8 @@ export const serverOffset = signal(0);
 export const lagging = signal(false);
 export const toast = signal<string | null>(null);
 export const wsClient = signal<WSClient | null>(null);
+/** False while the socket is down and reconnecting; controls sent then are lost. */
+export const connected = signal(true);
 /** Shown on the join screen; survives leaving the session view. */
 export const joinError = signal<{ message: string; canRetry: boolean } | null>(null);
 

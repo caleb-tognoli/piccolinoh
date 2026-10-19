@@ -1,7 +1,7 @@
 import { Pause, Play, SkipForward } from "lucide-preact";
 import { useState } from "preact/hooks";
 import { parseTime } from "../lib/format";
-import { sendControl, session } from "../store";
+import { connected, sendControl, session } from "../store";
 import { Button } from "../ui/Button";
 
 export function Controls() {
@@ -11,7 +11,7 @@ export function Controls() {
 
   const paused = current.pausedAtPositionSec != null;
   return (
-    <div class="flex flex-wrap items-center gap-2">
+    <fieldset disabled={!connected.value} class="flex min-w-0 flex-wrap items-center gap-2">
       <Button
         variant="primary"
         size="lg"
@@ -47,6 +47,6 @@ export function Controls() {
           Seek
         </Button>
       </form>
-    </div>
+    </fieldset>
   );
 }
