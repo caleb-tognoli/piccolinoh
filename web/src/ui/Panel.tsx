@@ -4,11 +4,14 @@ import { cn } from "./cn";
 export function Panel({
   title,
   count,
+  meta,
   class: className,
   children,
 }: {
   title: string;
   count?: number;
+  /** Shown at the right end of the header. */
+  meta?: ComponentChildren;
   class?: string;
   children: ComponentChildren;
 }) {
@@ -21,6 +24,7 @@ export function Panel({
             {count}
           </span>
         )}
+        {meta != null && <span class="ml-auto text-xs font-normal tracking-normal normal-case tabular-nums">{meta}</span>}
       </h2>
       {children}
     </section>
