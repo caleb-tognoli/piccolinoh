@@ -1,6 +1,9 @@
+import { ArrowRight, CircleAlert, LoaderCircle } from "lucide-preact";
 import { useState } from "preact/hooks";
+import { Logo } from "./components/Logo";
 import { connect, startClockSync } from "./net";
 import { presence, serverOffset, session, wsClient } from "./store";
+import { Button } from "./ui/Button";
 
 const STATE_TIMEOUT_MS = 10_000;
 
@@ -57,17 +60,44 @@ export function JoinScreen() {
   };
 
   return (
-    <div class="join-screen">
-      <h1>piccolinoh</h1>
-      {sessionId ? (
-        <p>{name ? <>Joining as <strong>{name}</strong>.</> : "Join this watch session."}</p>
-      ) : (
-        <p class="error">No session in this link. Use /join in Discord to get one.</p>
-      )}
-      <button onClick={join} disabled={joining || !sessionId}>
-        {joining ? "Joining…" : "Tap to start"}
-      </button>
-      {error && <p class="error">{error}</p>}
-    </div>
+    <main class="grid min-h-dvh place-items-center bg-[radial-gradient(ellipse_at_top,--theme(--color-accent/12%),transparent_60%)] p-6">
+      <div class="flex w-full max-w-sm flex-col items-center gap-6 text-center">
+        <Logo large />
+        {sessionId ? (
+          <p class="text-muted">
+            {name ? (
+              <>
+                Joining as <strong class="font-semibold text-ink">{name}</strong>.
+              </>
+            ) : (
+              "Join this watch session."
+            )}
+          </p>
+        ) : (
+          <Alert>No session in this link. Use /join in Discord to get one.</Alert>
+        )}
+        <Button variant="primary" size="lg" class="w-full" onClick={join} disabled={joining || !sessionId}>
+          {joining ? (
+            <>
+              <LoaderCircle class="size-5 animate-spin" /> Joining…
+            </>
+          ) : (
+            <>
+              Tap to start <ArrowRight class="size-5" />
+            </>
+          )}
+        </Button>
+        {error && <Alert>{error}</Alert>}
+      </div>
+    </main>
+  );
+}
+
+function Alert({ children }: { children: string }) {
+  return (
+    <p role="alert" class="flex items-start gap-2 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-left text-sm text-danger">
+      <CircleAlert class="mt-0.5 size-4 shrink-0" />
+      {children}
+    </p>
   );
 }
