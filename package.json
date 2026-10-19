@@ -26,6 +26,7 @@
     "fastify": "^5.12.1",
     "pino": "^9.5.0",
     "ws": "^8.21.3",
+    "youtubei.js": "^18.2.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {

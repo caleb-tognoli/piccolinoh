@@ -2,6 +2,5 @@
 // dotenv doesn't overwrite existing values, so a developer's .env still wins.
 process.env["DISCORD_TOKEN"] ??= "test-token";
 process.env["DISCORD_GUILD_ID"] ??= "222222222222222222";
-process.env["LAVALINK_PASSWORD"] ??= "test-password";
 process.env["JOIN_TOKEN_SECRET"] ??= "test-secret-that-is-at-least-32-characters-long";
 process.env["LOG_LEVEL"] ??= "warn";

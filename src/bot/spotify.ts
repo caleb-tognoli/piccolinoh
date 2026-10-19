@@ -1,5 +1,5 @@
 // Spotify Web API via Client Credentials — metadata only. Tracks are played by
-// searching YouTube for "<artist> <title>" (see resolver.ts).
+// searching YouTube Music / YouTube for "<artist> <title>" (see resolver.ts).
 import { config } from "../config.js";
 
 const TOKEN_URL = "https://accounts.spotify.com/api/token";
@@ -15,12 +15,14 @@ export interface SpotifyRef {
 export interface SpotifyTrack {
   title: string;
   artist?: string;
+  durationSec: number;
 }
 
 interface TrackApi {
   id: string | null;
   name: string;
   artists: { name: string }[];
+  duration_ms: number;
   is_local?: boolean;
 }
 
@@ -73,7 +75,11 @@ async function api<T>(path: string, retried = false): Promise<T | null> {
 }
 
 function toTrack(t: TrackApi): SpotifyTrack {
-  return { title: t.name, artist: t.artists.find((a) => a.name)?.name };
+  return {
+    title: t.name,
+    artist: t.artists.find((a) => a.name)?.name,
+    durationSec: Math.round(t.duration_ms / 1000),
+  };
 }
 
 export async function getTrack(id: string): Promise<SpotifyTrack | null> {

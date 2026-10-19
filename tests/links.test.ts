@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { youtubeVideoId } from "../src/bot/resolver.js";
+import { parseYouTubeUrl } from "../src/bot/resolver.js";
 import { parseSpotifyUrl } from "../src/bot/spotify.js";
 
 describe("parseSpotifyUrl", () => {
@@ -40,18 +40,27 @@ describe("parseSpotifyUrl", () => {
   });
 });
 
-describe("youtubeVideoId", () => {
-  it("extracts ids from single-video links", () => {
-    expect(youtubeVideoId("https://www.youtube.com/watch?v=dQw4w9WgXcQ")).toBe("dQw4w9WgXcQ");
-    expect(youtubeVideoId("https://youtube.com/watch?v=dQw4w9WgXcQ&list=PL123")).toBe("dQw4w9WgXcQ");
-    expect(youtubeVideoId("https://music.youtube.com/watch?v=dQw4w9WgXcQ")).toBe("dQw4w9WgXcQ");
-    expect(youtubeVideoId("https://youtu.be/dQw4w9WgXcQ?t=42")).toBe("dQw4w9WgXcQ");
-    expect(youtubeVideoId("https://www.youtube.com/shorts/dQw4w9WgXcQ")).toBe("dQw4w9WgXcQ");
+describe("parseYouTubeUrl", () => {
+  const video = (id: string) => ({ kind: "video", id });
+
+  it("recognizes single-video links", () => {
+    expect(parseYouTubeUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ")).toEqual(video("dQw4w9WgXcQ"));
+    expect(parseYouTubeUrl("https://music.youtube.com/watch?v=dQw4w9WgXcQ")).toEqual(video("dQw4w9WgXcQ"));
+    expect(parseYouTubeUrl("https://youtu.be/dQw4w9WgXcQ?t=42")).toEqual(video("dQw4w9WgXcQ"));
+    expect(parseYouTubeUrl("https://www.youtube.com/shorts/dQw4w9WgXcQ")).toEqual(video("dQw4w9WgXcQ"));
   });
 
-  it("returns null for playlists, other sites and plain text", () => {
-    expect(youtubeVideoId("https://www.youtube.com/playlist?list=PL123")).toBeNull();
-    expect(youtubeVideoId("https://notyoutube.com/watch?v=dQw4w9WgXcQ")).toBeNull();
-    expect(youtubeVideoId("never gonna give you up")).toBeNull();
+  it("prefers the video when a watch link also has a list", () => {
+    expect(parseYouTubeUrl("https://youtube.com/watch?v=dQw4w9WgXcQ&list=PL123")).toEqual(video("dQw4w9WgXcQ"));
+  });
+
+  it("recognizes playlist links", () => {
+    expect(parseYouTubeUrl("https://www.youtube.com/playlist?list=PL123")).toEqual({ kind: "playlist", id: "PL123" });
+  });
+
+  it("returns null for other sites and plain text", () => {
+    expect(parseYouTubeUrl("https://notyoutube.com/watch?v=dQw4w9WgXcQ")).toBeNull();
+    expect(parseYouTubeUrl("https://www.youtube.com/@somechannel")).toBeNull();
+    expect(parseYouTubeUrl("never gonna give you up")).toBeNull();
   });
 });
