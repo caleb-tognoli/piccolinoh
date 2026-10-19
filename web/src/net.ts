@@ -10,8 +10,15 @@ export interface WSClient {
   close(): void;
 }
 
-/** A WebSocket that reconnects with backoff; `onOpen` runs on every (re)connect. */
-export function connect(url: string, onOpen: () => void): WSClient {
+// The server closes with this when the session id is unknown (expired link,
+// or the process restarted and dropped its in-memory sessions).
+const CLOSE_REJECTED = 1008;
+
+/**
+ * A WebSocket that reconnects with backoff; `onOpen` runs on every (re)connect.
+ * Stops reconnecting and calls `onRejected` if the server refuses the session.
+ */
+export function connect(url: string, onOpen: () => void, onRejected: () => void): WSClient {
   let socket: WebSocket | null = null;
   let closedByUser = false;
   let backoff = 250;
@@ -23,8 +30,13 @@ export function connect(url: string, onOpen: () => void): WSClient {
       backoff = 250;
       onOpen();
     });
-    socket.addEventListener("close", () => {
+    socket.addEventListener("close", (ev) => {
       if (closedByUser) return;
+      if (ev.code === CLOSE_REJECTED) {
+        closedByUser = true;
+        onRejected();
+        return;
+      }
       setTimeout(open, backoff);
       backoff = Math.min(5000, backoff * 2);
     });
