@@ -1,3 +1,5 @@
+import { useSignalEffect } from "@preact/signals";
+import { useEffect } from "preact/hooks";
 import { ConnectionBanner } from "./components/ConnectionBanner";
 import { History } from "./components/History";
 import { Logo } from "./components/Logo";
@@ -6,8 +8,27 @@ import { NowPlaying } from "./components/NowPlaying";
 import { PlayerFrame } from "./components/PlayerFrame";
 import { Queue } from "./components/Queue";
 import { Toast } from "./components/Toast";
+import { session } from "./store";
+
+const APP_TITLE = "piccolinoh";
+
+/** "▶ Song — piccolinoh" in the browser tab, so the room is findable among tabs. */
+function useNowPlayingTitle(): void {
+  useSignalEffect(() => {
+    const current = session.value?.current;
+    const icon = current?.pausedAtPositionSec != null ? "⏸" : "▶";
+    document.title = current ? `${icon} ${current.title} — ${APP_TITLE}` : APP_TITLE;
+  });
+  useEffect(
+    () => () => {
+      document.title = APP_TITLE;
+    },
+    [],
+  );
+}
 
 export function SessionView() {
+  useNowPlayingTitle();
   return (
     <>
       <ConnectionBanner />
