@@ -42,6 +42,7 @@ export interface PresenceMember {
 }
 
 export type ServerMessage =
+  | { type: "welcome"; clientId: string }
   | { type: "state"; session: SerializedSession; serverMs: number }
   | { type: "presence"; members: PresenceMember[] }
   | { type: "pong"; t0: number; serverMs: number };

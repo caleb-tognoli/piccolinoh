@@ -2,7 +2,7 @@ import { ArrowRight, CircleAlert, LoaderCircle } from "lucide-preact";
 import { useEffect, useState } from "preact/hooks";
 import { Logo } from "./components/Logo";
 import { connect, startClockSync } from "./net";
-import { joinError, presence, serverOffset, session, wsClient } from "./store";
+import { joinError, presence, selfId, serverOffset, session, wsClient } from "./store";
 import { Button } from "./ui/Button";
 
 const STATE_TIMEOUT_MS = 10_000;
@@ -64,6 +64,9 @@ export function JoinScreen() {
       if (serverOffset.value === 0) serverOffset.value = msg.serverMs - performance.now();
       session.value = msg.session;
     });
+    client.on("welcome", (msg) => {
+      selfId.value = msg.clientId;
+    });
     client.on("presence", (msg) => {
       presence.value = msg.members;
     });
@@ -78,6 +81,7 @@ export function JoinScreen() {
       wsClient.value = null;
       session.value = null;
       presence.value = [];
+      selfId.value = null;
       joinError.value = { message, canRetry };
       setJoining(false);
     }

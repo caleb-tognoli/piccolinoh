@@ -4,6 +4,8 @@ import type { ControlAction, PresenceMember, SerializedSession } from "./protoco
 
 export const session = signal<SerializedSession | null>(null);
 export const presence = signal<PresenceMember[]>([]);
+/** This browser's id in `presence`; changes on every reconnect. */
+export const selfId = signal<string | null>(null);
 /** serverMs ≈ performance.now() + serverOffset */
 export const serverOffset = signal(0);
 export const lagging = signal(false);

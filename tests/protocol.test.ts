@@ -111,6 +111,16 @@ describe("state server protocol", () => {
     expect(session.queue.map((t) => t.videoId)).toEqual(["b", "c"]);
   });
 
+  it("tells each browser its own id, matching its presence entry", async () => {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+    await new Promise<void>((resolve) => ws.once("open", () => resolve()));
+    const welcome = next(ws, (m) => m.type === "welcome");
+    const presence = next(ws, (m) => m.type === "presence");
+    ws.send(JSON.stringify({ type: "hello", sessionId: session.id }));
+    const { clientId } = await welcome;
+    expect((await presence).members.map((m: { id: string }) => m.id)).toEqual([clientId]);
+  });
+
   it("shows the display name from a valid join token in presence", async () => {
     const token = signJoinToken({ sid: session.id, gid: session.guildId, dn: "Alice" });
     const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);

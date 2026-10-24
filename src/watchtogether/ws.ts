@@ -60,8 +60,11 @@ export function attachSocket(ws: WebSocket): void {
       const displayName = msg.joinToken
         ? verifyJoinToken(msg.joinToken, { sid: session.id, gid: session.guildId })
         : null;
-      clients.set(ws, { id: randomUUID(), ...(displayName ? { displayName } : {}) });
+      const id = randomUUID();
+      clients.set(ws, { id, ...(displayName ? { displayName } : {}) });
       session.clients.add(ws);
+      // Lets the browser find itself in presence lists.
+      send(ws, { type: "welcome", clientId: id });
       send(ws, stateMessage(session));
       broadcastPresence(session);
       return;
