@@ -1,4 +1,5 @@
 import { ConnectionBanner } from "./components/ConnectionBanner";
+import { History } from "./components/History";
 import { Logo } from "./components/Logo";
 import { Members } from "./components/Members";
 import { NowPlaying } from "./components/NowPlaying";
@@ -22,6 +23,7 @@ export function SessionView() {
           <aside class="flex min-w-0 flex-col gap-4">
             <Queue />
             <Members />
+            <History />
           </aside>
         </div>
         <Toast />
