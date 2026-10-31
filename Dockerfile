@@ -33,7 +33,6 @@ RUN pnpm install --frozen-lockfile --prod
 FROM node:22-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
-RUN mkdir -p /app/data
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/web/dist ./web/dist

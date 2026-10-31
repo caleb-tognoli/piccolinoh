@@ -2,10 +2,10 @@
   "name": "piccolinoh",
   "version": "0.1.0",
   "private": true,
-  "description": "A Discord music bot.",
+  "description": "A YouTube watch-together website controlled by a Discord bot.",
   "type": "module",
   "engines": {
-    "node": ">=22.5"
+    "node": ">=22"
   },
   "packageManager": "pnpm@9.15.0",
   "scripts": {
@@ -26,6 +26,7 @@
     "fastify": "^5.12.1",
     "pino": "^9.5.0",
     "ws": "^8.21.3",
+    "youtubei.js": "^18.2.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {

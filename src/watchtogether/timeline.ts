@@ -1,63 +1,34 @@
-import type { Session } from "./session.js";
+import { notifySessionChange, type Session } from "./session.js";
 
-export function derivePosition(session: Session, serverNowMs: number): number {
+export function derivePosition(session: Session, serverNowMs = Date.now()): number {
   if (!session.current) return 0;
   if (session.current.pausedAtPositionSec != null) return session.current.pausedAtPositionSec;
   return (serverNowMs - session.current.startedAtServerMs) / 1000;
 }
 
-export function advance(session: Session): void {
+/** Retires the current track to history and starts the queue head (unless `startNext` is false). */
+export function advance(session: Session, startNext = true): void {
   if (session.current) {
-    session.history.push({
-      videoId: session.current.videoId,
-      durationSec: session.current.durationSec,
-      requestedBy: session.current.requestedBy,
-    });
+    const { startedAtServerMs: _s, pausedAtPositionSec: _p, ...track } = session.current;
+    session.history.push(track);
   }
-  const next = session.queue.shift();
-  if (next) {
-    session.current = {
-      videoId: next.videoId,
-      durationSec: next.durationSec,
-      startedAtServerMs: Date.now(),
-      requestedBy: next.requestedBy,
-    };
-  } else {
-    session.current = undefined;
-  }
+  const next = startNext ? session.queue.shift() : undefined;
+  session.current = next ? { ...next, startedAtServerMs: Date.now() } : undefined;
   session.errorTally.clear();
   session.epoch += 1;
 }
 
-export function autoAdvance(session: Session): void {
-  if (session.settings.autoplay) {
-    advance(session);
-    return;
-  }
-  if (!session.current) return;
-  session.history.push({
-    videoId: session.current.videoId,
-    durationSec: session.current.durationSec,
-    requestedBy: session.current.requestedBy,
-  });
-  session.current = undefined;
-  session.errorTally.clear();
-  session.epoch += 1;
-}
-
-export function scheduleAdvance(session: Session, onAdvance: (s: Session) => void): void {
-  if (session.advanceTimer) {
-    clearTimeout(session.advanceTimer);
-    session.advanceTimer = undefined;
-  }
+/** (Re)arms the timer that advances the session when the current track ends. */
+export function scheduleAdvance(session: Session): void {
+  clearTimeout(session.advanceTimer);
+  session.advanceTimer = undefined;
   if (!session.current || session.current.pausedAtPositionSec != null) return;
 
-  const now = Date.now();
-  const remainingMs = Math.max(0, (session.current.durationSec - derivePosition(session, now)) * 1000);
+  const remainingMs = Math.max(0, (session.current.durationSec - derivePosition(session)) * 1000);
   session.advanceTimer = setTimeout(() => {
     session.advanceTimer = undefined;
-    autoAdvance(session);
-    onAdvance(session);
-    scheduleAdvance(session, onAdvance);
+    advance(session, session.autoplay);
+    scheduleAdvance(session);
+    notifySessionChange(session);
   }, remainingMs);
 }

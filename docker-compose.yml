@@ -1,47 +1,11 @@
 services:
   piccolinoh:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    build: .
     container_name: piccolinoh
     restart: unless-stopped
-    depends_on:
-      lavalink:
-        condition: service_healthy
     ports:
       - "3000:3000"
     env_file: .env
     environment:
       NODE_ENV: production
       HTTP_PORT: 3000
-      SQLITE_PATH: /app/data/piccolinoh.db
-      LAVALINK_URL: http://lavalink:2333
-      LAVALINK_PASSWORD: ${LAVALINK_PASSWORD}
-      SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID:-}
-      SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET:-}
-    volumes:
-      - piccolinoh_data:/app/data
-
-  lavalink:
-    image: ghcr.io/lavalink-devs/lavalink:4
-    container_name: piccolinoh-lavalink
-    restart: unless-stopped
-    environment:
-      LAVALINK_PASSWORD: ${LAVALINK_PASSWORD}
-      SERVER_PORT: 2333
-      SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID:-}
-      SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET:-}
-      SPOTIFY_SP_DC: ${SPOTIFY_SP_DC:-}
-    volumes:
-      - ./lavalink/application.yml:/opt/Lavalink/application.yml:ro
-    healthcheck:
-      test:
-        - CMD-SHELL
-        - "wget -q -O - --header \"Authorization: $$LAVALINK_PASSWORD\" http://localhost:2333/version >/dev/null 2>&1 || exit 1"
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
-
-volumes:
-  piccolinoh_data:

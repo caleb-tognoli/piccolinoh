@@ -1,21 +1,14 @@
 import { EmbedBuilder } from "discord.js";
-import { getVideoMetadata } from "./resolver.js";
+import type { CurrentTrack, Session, Track } from "../watchtogether/session.js";
 
 const COLORS = {
-  queued: 0x4c8bf5,
-  playing: 0x53c47a,
-  info: 0x8a7ee6,
   ok: 0x53c47a,
-  warn: 0xd6a020,
+  info: 0x8a7ee6,
+  queued: 0x4c8bf5,
   error: 0xd05656,
 } as const;
 
-const HISTORY_LIMIT = 10;
-const QUEUE_LIMIT = 10;
-
-function ytThumb(videoId: string): string {
-  return `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
-}
+const LIST_LIMIT = 10;
 
 function formatDuration(sec: number): string {
   const m = Math.floor(sec / 60);
@@ -23,108 +16,86 @@ function formatDuration(sec: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-function titleFor(videoId: string, fallback = videoId): string {
-  const meta = getVideoMetadata(videoId);
-  return meta?.title ?? fallback;
+function line(track: Track): string {
+  return `**${track.title}** · ${formatDuration(track.durationSec)}`;
 }
 
-function authorFor(videoId: string): string | null {
-  const meta = getVideoMetadata(videoId);
-  return meta?.author ?? null;
+function thumbnail(videoId: string): string {
+  return `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
+}
+
+/** Joins up to LIST_LIMIT lines, staying under Discord's 1024-char field limit. */
+function list(lines: string[]): string {
+  let out = "";
+  let shown = 0;
+  for (const l of lines.slice(0, LIST_LIMIT)) {
+    if (out.length + l.length > 950) break;
+    out += (shown++ ? "\n" : "") + l;
+  }
+  return lines.length > shown ? `${out}\n_+ ${lines.length - shown} more_` : out;
 }
 
 export function ok(title: string, description?: string): EmbedBuilder {
   const e = new EmbedBuilder().setColor(COLORS.ok).setTitle(title);
-  if (description) e.setDescription(description);
-  return e;
+  return description ? e.setDescription(description) : e;
+}
+
+export function info(title: string, description: string): EmbedBuilder {
+  return new EmbedBuilder().setColor(COLORS.info).setTitle(title).setDescription(description);
 }
 
 export function error(message: string): EmbedBuilder {
   return new EmbedBuilder().setColor(COLORS.error).setTitle("Error").setDescription(message);
 }
 
-export function info(title: string, description?: string): EmbedBuilder {
-  const e = new EmbedBuilder().setColor(COLORS.info).setTitle(title);
-  if (description) e.setDescription(description);
-  return e;
-}
-
-export function queued(
-  track: { videoId: string; title: string; author: string; durationSec: number },
-  wasEmpty: boolean,
-): EmbedBuilder {
+export function queued(track: Track, startedNow: boolean): EmbedBuilder {
   return new EmbedBuilder()
     .setColor(COLORS.queued)
-    .setAuthor({ name: wasEmpty ? "Playing" : "Queued" })
+    .setAuthor({ name: startedNow ? "Playing" : "Queued" })
     .setTitle(track.title)
     .setDescription(`${track.author} · ${formatDuration(track.durationSec)}`)
-    .setThumbnail(ytThumb(track.videoId));
+    .setThumbnail(thumbnail(track.videoId));
 }
 
-export function queuedPlaylist(count: number, sourceLabel: string): EmbedBuilder {
+export function queuedMany(count: number, name: string): EmbedBuilder {
   return new EmbedBuilder()
     .setColor(COLORS.queued)
     .setAuthor({ name: "Queued" })
-    .setTitle(sourceLabel)
+    .setTitle(name)
     .setDescription(`${count} track${count === 1 ? "" : "s"} added to the queue.`);
 }
 
-export function nowPlaying(
-  current: { videoId: string; durationSec: number },
-  paused: boolean,
-): EmbedBuilder {
-  const meta = getVideoMetadata(current.videoId);
-  const title = meta?.title ?? current.videoId;
-  const author = meta?.author ?? null;
-  const dur = formatDuration(current.durationSec);
-  const description = [author, dur, paused ? "⏸ paused" : null].filter(Boolean).join(" · ");
+export function nowPlaying(current: CurrentTrack): EmbedBuilder {
+  const paused = current.pausedAtPositionSec != null;
   return new EmbedBuilder()
-    .setColor(COLORS.playing)
+    .setColor(COLORS.ok)
     .setAuthor({ name: paused ? "Paused" : "Now playing" })
-    .setTitle(title)
-    .setDescription(description)
-    .setThumbnail(ytThumb(current.videoId));
+    .setTitle(current.title)
+    .setDescription(`${current.author} · ${formatDuration(current.durationSec)}`)
+    .setThumbnail(thumbnail(current.videoId));
 }
 
-export function queueList(
-  items: { videoId: string; durationSec: number }[],
-  current?: { videoId: string; durationSec: number } | undefined,
-): EmbedBuilder {
-  const e = new EmbedBuilder().setColor(COLORS.info).setTitle("Queue");
-  if (current) {
-    const author = authorFor(current.videoId);
-    e.addFields({
-      name: "▶ Now playing",
-      value: `**${titleFor(current.videoId)}**${author ? ` — ${author}` : ""} · ${formatDuration(current.durationSec)}`,
-    });
-  } else {
-    e.addFields({ name: "▶ Now playing", value: "_Nothing playing_" });
-  }
-  if (items.length === 0) {
-    e.addFields({ name: "Up next", value: "_Queue empty_" });
-  } else {
-    const shown = items.slice(0, QUEUE_LIMIT);
-    const lines = shown
-      .map((it, i) => `${i + 1}. **${titleFor(it.videoId)}** · ${formatDuration(it.durationSec)}`)
-      .join("\n");
-    const more = items.length > QUEUE_LIMIT ? `\n_+ ${items.length - QUEUE_LIMIT} more_` : "";
-    e.addFields({ name: "Up next", value: lines + more });
-  }
-  return e;
+/** Now playing + up next. Used by /queue and the live board posted by /play. */
+export function queueList(session: Session): EmbedBuilder {
+  const { current, queue } = session;
+  const nowValue = current
+    ? `${line(current)} — ${current.author}${current.pausedAtPositionSec != null ? " · ⏸" : ""}`
+    : "_Nothing playing_";
+  const upNext = queue.length > 0 ? list(queue.map((t, i) => `${i + 1}. ${line(t)}`)) : "_Queue empty_";
+  return new EmbedBuilder()
+    .setColor(COLORS.info)
+    .setTitle("Queue")
+    .addFields({ name: "▶ Now playing", value: nowValue }, { name: "Up next", value: upNext });
 }
 
-export function historyList(
-  items: { videoId: string; durationSec: number }[],
-): EmbedBuilder {
-  const e = new EmbedBuilder().setColor(COLORS.info).setTitle("Recently played");
-  if (items.length === 0) {
-    e.setDescription("_Nothing has played yet._");
-    return e;
-  }
-  const shown = items.slice(-HISTORY_LIMIT).reverse();
-  const lines = shown
-    .map((it) => `• **${titleFor(it.videoId)}** · ${formatDuration(it.durationSec)}`)
+export function historyList(history: Track[]): EmbedBuilder {
+  const lines = history
+    .slice(-LIST_LIMIT)
+    .reverse()
+    .map((t) => `• ${line(t)}`)
     .join("\n");
-  e.setDescription(lines);
-  return e;
+  return new EmbedBuilder()
+    .setColor(COLORS.info)
+    .setTitle("Recently played")
+    .setDescription(lines || "_Nothing has played yet._");
 }

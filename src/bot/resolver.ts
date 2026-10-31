@@ -1,440 +1,155 @@
-import { config } from "../config.js";
+// Turns /play input (YouTube link, Spotify link, or search text) into playable
+// YouTube tracks.
 import { logger } from "../logger.js";
-import { getDb } from "./db/index.js";
-import {
-  getAlbum,
-  getTrack,
-  isConfigured as isSpotifyConfigured,
-  parseSpotifyUrl,
-  type SpotifyTrack,
-} from "./spotify.js";
+import type { Track } from "../watchtogether/session.js";
+import { getAlbum, getTrack, parseSpotifyUrl, spotifyEnabled, type SpotifyTrack } from "./spotify.js";
+import { getPlaylist, getVideo, isEmbeddable, searchSongs, searchVideos } from "./youtube.js";
 
-const QUERY_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const VIDEO_ID_RE = /^([a-zA-Z0-9_-]{11})$/;
-const SPOTIFY_HOST = "open.spotify.com";
-const YT_TRANSLATION_CONCURRENCY = 5;
-
-export interface ResolvedTrack {
-  videoId: string;
-  title: string;
-  author: string;
-  durationSec: number;
-}
+const VIDEO_ID_RE = /^[\w-]{11}$/;
+const SPOTIFY_TRANSLATION_CONCURRENCY = 5;
+/** How many search results to try before giving up on finding an embeddable one. */
+const EMBED_CANDIDATES = 3;
+/** A YouTube upload within this many seconds of the Spotify track counts as the same recording. */
+const DURATION_TOLERANCE_SEC = 5;
 
 export type ResolveResult =
-  | { ok: true; tracks: ResolvedTrack[]; sourceLabel?: string }
-  | {
-      ok: false;
-      reason:
-        | "not-found"
-        | "error"
-        | "spotify-not-configured"
-        | "spotify-playlist-unavailable";
-      detail?: string;
-    };
+  | { ok: true; tracks: Track[]; playlistName?: string }
+  | { ok: false; message: string };
 
-interface VideoRow {
-  video_id: string;
-  title: string;
-  author: string;
-  duration_sec: number;
-}
+const fail = (message: string): ResolveResult => ({ ok: false, message });
 
-interface QueryRow {
-  video_id: string;
-  cached_at: number;
-}
+export type YouTubeRef = { kind: "video"; id: string } | { kind: "playlist"; id: string };
 
-interface LavalinkTrack {
-  info: {
-    identifier: string;
-    title: string;
-    author: string;
-    length: number;
-    isStream: boolean;
-    sourceName?: string;
-    uri?: string;
-  };
-}
-
-type LoadResult =
-  | { kind: "single"; track: LavalinkTrack }
-  | { kind: "playlist"; name: string; tracks: LavalinkTrack[] }
-  | { kind: "empty" };
-
-type LoadTracksResponse =
-  | { loadType: "track"; data: LavalinkTrack }
-  | { loadType: "search"; data: LavalinkTrack[] }
-  | {
-      loadType: "playlist";
-      data: { info: { name: string; selectedTrack?: number }; tracks: LavalinkTrack[] };
-    }
-  | { loadType: "empty"; data: null }
-  | {
-      loadType: "error";
-      data: { message: string; severity: string; cause?: string };
-    };
-
-function extractVideoId(input: string): string | null {
-  const trimmed = input.trim();
-  if (VIDEO_ID_RE.test(trimmed)) return trimmed;
+/**
+ * Recognizes YouTube links. A watch link that also carries `&list=` is treated
+ * as the single video; only a bare playlist link queues the whole playlist.
+ */
+export function parseYouTubeUrl(input: string): YouTubeRef | null {
+  let url: URL;
   try {
-    const url = new URL(trimmed);
-    if (url.hostname === "youtu.be") {
-      const path = url.pathname.slice(1);
-      if (VIDEO_ID_RE.test(path)) return path;
-    }
-    if (url.hostname.endsWith("youtube.com")) {
-      const v = url.searchParams.get("v");
-      if (v && VIDEO_ID_RE.test(v)) return v;
-      const parts = url.pathname.split("/").filter(Boolean);
-      const shortsIdx = parts.indexOf("shorts");
-      if (shortsIdx !== -1) {
-        const id = parts[shortsIdx + 1];
-        if (id && VIDEO_ID_RE.test(id)) return id;
-      }
-    }
+    url = new URL(input);
   } catch {
-    // not a URL
+    return null;
   }
-  return null;
+  const host = url.hostname.replace(/^(www|m|music)\./, "");
+  const parts = url.pathname.split("/").filter(Boolean);
+  let videoId: string | null | undefined;
+  if (host === "youtu.be") videoId = parts[0];
+  else if (host === "youtube.com") videoId = url.searchParams.get("v") ?? (parts[0] === "shorts" ? parts[1] : null);
+  else return null;
+
+  if (videoId && VIDEO_ID_RE.test(videoId)) return { kind: "video", id: videoId };
+  const listId = url.searchParams.get("list");
+  return listId ? { kind: "playlist", id: listId } : null;
 }
 
-function looksLikeUrl(input: string): boolean {
-  const t = input.trim();
-  return t.startsWith("http://") || t.startsWith("https://") || VIDEO_ID_RE.test(t);
+const isClose = (t: Track, targetSec: number) => Math.abs(t.durationSec - targetSec) <= DURATION_TOLERANCE_SEC;
+
+/** Candidates whose length matches the target first, otherwise keeping YouTube's order. */
+export function rankByDuration(candidates: Track[], targetSec: number): Track[] {
+  return [...candidates.filter((t) => isClose(t, targetSec)), ...candidates.filter((t) => !isClose(t, targetSec))];
 }
 
-function isSpotifyUrl(input: string): boolean {
-  const t = input.trim();
-  if (t.startsWith("spotify:")) return true;
-  try {
-    return new URL(t).hostname === SPOTIFY_HOST;
-  } catch {
-    return false;
+/** First candidate YouTube doesn't flag as unembeddable (only those can play on the site). */
+async function firstEmbeddable(candidates: Track[]): Promise<Track | undefined> {
+  for (const candidate of candidates.slice(0, EMBED_CANDIDATES)) {
+    if (await isEmbeddable(candidate.videoId)) return candidate;
   }
+  return undefined;
 }
 
-function getVideoFromCache(videoId: string): ResolvedTrack | null {
-  const row = getDb()
-    .prepare(
-      "SELECT video_id, title, author, duration_sec FROM video_cache WHERE video_id = ?",
-    )
-    .get(videoId) as VideoRow | undefined;
-  if (!row) return null;
-  return {
-    videoId: row.video_id,
-    title: row.title,
-    author: row.author,
-    durationSec: row.duration_sec,
-  };
-}
-
-function saveVideoToCache(t: ResolvedTrack): void {
-  getDb()
-    .prepare(
-      "INSERT OR REPLACE INTO video_cache (video_id, title, author, duration_sec, cached_at) VALUES (?, ?, ?, ?, ?)",
-    )
-    .run(t.videoId, t.title, t.author, t.durationSec, Date.now());
-}
-
-function getQueryFromCache(query: string): string | null {
-  const row = getDb()
-    .prepare("SELECT video_id, cached_at FROM query_cache WHERE query = ?")
-    .get(query.toLowerCase()) as QueryRow | undefined;
-  if (!row) return null;
-  if (Date.now() - row.cached_at > QUERY_TTL_MS) return null;
-  return row.video_id;
-}
-
-function saveQueryToCache(query: string, videoId: string): void {
-  getDb()
-    .prepare(
-      "INSERT OR REPLACE INTO query_cache (query, video_id, cached_at) VALUES (?, ?, ?)",
-    )
-    .run(query.toLowerCase(), videoId, Date.now());
-}
-
-function getSpotifyTrackFromCache(spotifyTrackId: string): string | null {
-  const row = getDb()
-    .prepare("SELECT video_id FROM spotify_track_cache WHERE spotify_track_id = ?")
-    .get(spotifyTrackId) as { video_id: string } | undefined;
-  return row?.video_id ?? null;
-}
-
-function saveSpotifyTrackToCache(spotifyTrackId: string, videoId: string): void {
-  getDb()
-    .prepare(
-      "INSERT OR REPLACE INTO spotify_track_cache (spotify_track_id, video_id, cached_at) VALUES (?, ?, ?)",
-    )
-    .run(spotifyTrackId, videoId, Date.now());
-}
-
-export async function loadTracks(identifier: string): Promise<LoadResult> {
-  const url = new URL("/v4/loadtracks", config.LAVALINK_URL);
-  url.searchParams.set("identifier", identifier);
-  const res = await fetch(url, {
-    headers: { Authorization: config.LAVALINK_PASSWORD },
-  });
-  if (!res.ok) {
-    throw new Error(`loadtracks ${res.status}: ${await res.text()}`);
-  }
-  const data = (await res.json()) as LoadTracksResponse;
-  switch (data.loadType) {
-    case "empty":
-      return { kind: "empty" };
-    case "error":
-      throw new Error(`loadtracks error: ${data.data.message}`);
-    case "track":
-      return { kind: "single", track: data.data };
-    case "search": {
-      const first = data.data[0];
-      return first ? { kind: "single", track: first } : { kind: "empty" };
-    }
-    case "playlist":
-      return {
-        kind: "playlist",
-        name: data.data.info.name,
-        tracks: data.data.tracks,
-      };
-  }
-}
-
-function trackFromLavalink(raw: LavalinkTrack): ResolvedTrack {
-  return {
-    videoId: raw.info.identifier,
-    title: raw.info.title,
-    author: raw.info.author,
-    durationSec: Math.round(raw.info.length / 1000),
-  };
-}
-
-function playableTracks(raw: LavalinkTrack[]): ResolvedTrack[] {
-  const out: ResolvedTrack[] = [];
-  for (const r of raw) {
-    if (r.info.isStream) continue;
-    if (!r.info.identifier) continue;
-    out.push(trackFromLavalink(r));
-    saveVideoToCache(out[out.length - 1]!);
-  }
-  return out;
-}
-
-async function resolveByVideoId(videoId: string): Promise<ResolveResult> {
-  const cached = getVideoFromCache(videoId);
-  if (cached) return { ok: true, tracks: [cached] };
-  const result = await loadTracks(`https://www.youtube.com/watch?v=${videoId}`);
-  if (result.kind !== "single" || result.track.info.isStream) {
-    return { ok: false, reason: "not-found" };
-  }
-  const track = { ...trackFromLavalink(result.track), videoId };
-  saveVideoToCache(track);
-  return { ok: true, tracks: [track] };
-}
-
-async function resolveSpotifyTrack(t: SpotifyTrack): Promise<ResolvedTrack | null> {
-  const cachedVideoId = getSpotifyTrackFromCache(t.id);
-  if (cachedVideoId) {
-    const cached = getVideoFromCache(cachedVideoId);
-    if (cached) {
-      return {
-        videoId: cachedVideoId,
-        title: t.title,
-        author: t.artists[0] ?? cached.author,
-        durationSec: Math.round(t.durationMs / 1000),
-      };
-    }
-  }
-  const query = `${t.artists[0] ?? ""} ${t.title}`.trim();
-  if (!query) return null;
-  const result = await loadTracks(`ytsearch:${query}`);
-  if (result.kind !== "single" || result.track.info.isStream) return null;
-  const videoId = result.track.info.identifier;
-  const track: ResolvedTrack = {
-    videoId,
-    title: t.title,
-    author: t.artists[0] ?? result.track.info.author,
-    durationSec: Math.round(t.durationMs / 1000),
-  };
-  saveVideoToCache(track);
-  saveSpotifyTrackToCache(t.id, videoId);
-  return track;
-}
-
-async function pMap<T, R>(
-  items: T[],
-  concurrency: number,
-  fn: (item: T) => Promise<R>,
-): Promise<R[]> {
+async function mapConcurrent<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length);
-  let cursor = 0;
+  let next = 0;
   const worker = async (): Promise<void> => {
-    while (cursor < items.length) {
-      const i = cursor++;
+    while (next < items.length) {
+      const i = next++;
       out[i] = await fn(items[i]!);
     }
   };
-  await Promise.all(
-    Array.from({ length: Math.min(concurrency, items.length) }, () => worker()),
-  );
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
   return out;
 }
 
-async function resolveSpotifyUrl(input: string): Promise<ResolveResult> {
-  if (!isSpotifyConfigured()) return { ok: false, reason: "spotify-not-configured" };
-  const parsed = parseSpotifyUrl(input);
-  if (!parsed) return { ok: false, reason: "error", detail: "unrecognized Spotify URL" };
-
-  if (parsed.kind === "track") {
-    const meta = await getTrack(parsed.id);
-    if (!meta) return { ok: false, reason: "not-found" };
-    const track = await resolveSpotifyTrack(meta);
-    return track ? { ok: true, tracks: [track] } : { ok: false, reason: "not-found" };
-  }
-
-  if (parsed.kind === "album") {
-    const collection = await getAlbum(parsed.id);
-    if (!collection || collection.tracks.length === 0) {
-      return { ok: false, reason: "not-found" };
-    }
-    const resolved = await pMap(
-      collection.tracks,
-      YT_TRANSLATION_CONCURRENCY,
-      resolveSpotifyTrack,
-    );
-    const tracks = resolved.filter((t): t is ResolvedTrack => t !== null);
-    if (tracks.length === 0) return { ok: false, reason: "not-found" };
-    return { ok: true, tracks, sourceLabel: collection.name };
-  }
-
-  // Playlist path: delegate to Lavalink's LavaSrc plugin. LavaSrc uses
-  // Spotify's web-player token flow (anonymous, or authenticated when
-  // SPOTIFY_SP_DC is set) which is the only auth surface where playlist
-  // items are readable without per-user OAuth. LavaSrc returns each track
-  // with Spotify metadata + a Spotify identifier; we run the same
-  // resolveSpotifyTrack fan-out that album/track use to translate to
-  // real YouTube video IDs.
-  let raw: LoadResult;
+async function resolveVideo(videoId: string): Promise<ResolveResult> {
   try {
-    raw = await loadTracks(input);
+    const { track, embeddable } = await getVideo(videoId);
+    if (embeddable === false) return fail("That video's owner doesn't allow playing it on other sites.");
+    if (track) return { ok: true, tracks: [track] };
   } catch (err) {
-    return { ok: false, reason: "spotify-playlist-unavailable", detail: (err as Error).message };
+    logger.warn({ err, videoId }, "video lookup failed — trying search");
   }
-  if (raw.kind !== "playlist") {
-    return { ok: false, reason: "spotify-playlist-unavailable" };
+  // The player endpoint can refuse metadata (bot checks); search usually still finds the video.
+  const hit = (await searchVideos(videoId, 10)).find((t) => t.videoId === videoId);
+  return hit ? { ok: true, tracks: [hit] } : fail("Couldn't find that video (live streams aren't supported).");
+}
+
+async function resolveSearch(query: string): Promise<ResolveResult> {
+  const results = await searchVideos(query);
+  if (results.length === 0) return fail("No results.");
+  const hit = await firstEmbeddable(results);
+  return hit ? { ok: true, tracks: [hit] } : fail("The top results can't be played on other sites.");
+}
+
+/**
+ * Finds the YouTube upload of a Spotify track: YouTube Music songs first, regular
+ * videos if no song has the right length. Keeps Spotify's title/artist for display.
+ */
+async function translateSpotifyTrack(t: SpotifyTrack): Promise<Track | null> {
+  const query = [t.artist, t.title].filter(Boolean).join(" ");
+  const songs = await searchSongs(query).catch((err: unknown) => {
+    logger.warn({ err, query }, "YouTube Music search failed — falling back to videos");
+    return [];
+  });
+  let candidates = rankByDuration(songs, t.durationSec);
+  if (!candidates[0] || !isClose(candidates[0], t.durationSec)) {
+    candidates = rankByDuration([...candidates, ...(await searchVideos(query))], t.durationSec);
   }
-  const spotifyTracks: SpotifyTrack[] = raw.tracks.map((t) => ({
-    id: t.info.identifier,
-    title: t.info.title,
-    artists: [t.info.author],
-    durationMs: t.info.length,
-  }));
-  const resolvedPl = await pMap(
-    spotifyTracks,
-    YT_TRANSLATION_CONCURRENCY,
-    resolveSpotifyTrack,
+  const hit = await firstEmbeddable(candidates);
+  return hit ? { ...hit, title: t.title, author: t.artist ?? hit.author } : null;
+}
+
+async function resolveSpotify(input: string): Promise<ResolveResult> {
+  if (!spotifyEnabled()) return fail("Spotify links aren't enabled on this bot.");
+  const ref = parseSpotifyUrl(input);
+  if (!ref) return fail("Unrecognized Spotify link.");
+  if (ref.kind === "playlist") {
+    // Client Credentials apps can't read playlist contents (needs user OAuth).
+    return fail("Spotify playlists aren't supported — paste an album or track link instead.");
+  }
+
+  const source =
+    ref.kind === "track"
+      ? await getTrack(ref.id).then((t) => (t ? { name: undefined, tracks: [t] } : null))
+      : await getAlbum(ref.id);
+  if (!source) return fail("No results.");
+
+  const translated = await mapConcurrent(source.tracks, SPOTIFY_TRANSLATION_CONCURRENCY, (t) =>
+    translateSpotifyTrack(t).catch((err: unknown) => {
+      logger.warn({ err, title: t.title }, "couldn't match Spotify track");
+      return null;
+    }),
   );
-  const plTracks = resolvedPl.filter((t): t is ResolvedTrack => t !== null);
-  if (plTracks.length === 0) return { ok: false, reason: "not-found" };
-  return { ok: true, tracks: plTracks, sourceLabel: raw.name };
+  const tracks = translated.filter((t): t is Track => t !== null);
+  return tracks.length > 0 ? { ok: true, tracks, playlistName: source.name } : fail("No results.");
 }
 
 export async function resolveInput(input: string): Promise<ResolveResult> {
+  const query = input.trim();
   try {
-    if (isSpotifyUrl(input)) return await resolveSpotifyUrl(input);
-
-    if (looksLikeUrl(input)) {
-      // YouTube URL / bare id fast path preserves the videoId cache hit.
-      const ytVideoId = extractVideoId(input);
-      if (ytVideoId) return await resolveByVideoId(ytVideoId);
-
-      const result = await loadTracks(input);
-      if (result.kind === "empty") return { ok: false, reason: "not-found" };
-      if (result.kind === "single") {
-        if (result.track.info.isStream) return { ok: false, reason: "not-found" };
-        const track = trackFromLavalink(result.track);
-        saveVideoToCache(track);
-        return { ok: true, tracks: [track] };
-      }
-      const tracks = playableTracks(result.tracks);
-      if (tracks.length === 0) return { ok: false, reason: "not-found" };
-      return { ok: true, tracks, sourceLabel: result.name };
+    if (query.startsWith("spotify:") || /^https?:\/\/open\.spotify\.com\//.test(query)) {
+      return await resolveSpotify(query);
     }
-
-    // text query path — YouTube search via Lavalink
-    const query = input.trim();
-    const cachedVideoId = getQueryFromCache(query);
-    if (cachedVideoId) {
-      const cached = getVideoFromCache(cachedVideoId);
-      if (cached) return { ok: true, tracks: [cached] };
+    const youtube = parseYouTubeUrl(query);
+    if (youtube?.kind === "video") return await resolveVideo(youtube.id);
+    if (youtube?.kind === "playlist") {
+      const { name, tracks } = await getPlaylist(youtube.id);
+      return tracks.length > 0 ? { ok: true, tracks, playlistName: name } : fail("That playlist has no playable videos.");
     }
-
-    const result = await loadTracks(`ytsearch:${query}`);
-    if (result.kind !== "single" || result.track.info.isStream) {
-      return { ok: false, reason: "not-found" };
-    }
-    const track = trackFromLavalink(result.track);
-    saveVideoToCache(track);
-    saveQueryToCache(query, track.videoId);
-    return { ok: true, tracks: [track] };
+    if (/^https?:\/\//.test(query)) return fail("Only YouTube and Spotify links are supported.");
+    return await resolveSearch(query);
   } catch (err) {
     logger.error({ err, input }, "resolveInput failed");
-    return { ok: false, reason: "error", detail: (err as Error).message };
+    return fail(`Error: ${(err as Error).message}`);
   }
-}
-
-export function getGuildSetting(guildId: string): {
-  skipmode: string;
-  voteThreshold: number;
-  autoplay: boolean;
-} {
-  const row = getDb()
-    .prepare(
-      "SELECT skipmode, vote_threshold, autoplay FROM guild_settings WHERE guild_id = ?",
-    )
-    .get(guildId) as
-    | { skipmode: string; vote_threshold: number; autoplay: number }
-    | undefined;
-  return {
-    skipmode: row?.skipmode ?? "anyone",
-    voteThreshold: row?.vote_threshold ?? 0.5,
-    autoplay: row ? row.autoplay !== 0 : true,
-  };
-}
-
-export function setGuildSkipmode(
-  guildId: string,
-  mode: "anyone" | "vote" | "dj",
-): void {
-  getDb()
-    .prepare(
-      "INSERT INTO guild_settings (guild_id, skipmode) VALUES (?, ?) ON CONFLICT(guild_id) DO UPDATE SET skipmode = excluded.skipmode",
-    )
-    .run(guildId, mode);
-}
-
-export function setGuildAutoplay(guildId: string, on: boolean): void {
-  getDb()
-    .prepare(
-      "INSERT INTO guild_settings (guild_id, autoplay) VALUES (?, ?) ON CONFLICT(guild_id) DO UPDATE SET autoplay = excluded.autoplay",
-    )
-    .run(guildId, on ? 1 : 0);
-}
-
-export function getVideoMetadata(
-  videoId: string,
-): { title: string; author: string; durationSec: number } | null {
-  const row = getDb()
-    .prepare(
-      "SELECT title, author, duration_sec FROM video_cache WHERE video_id = ?",
-    )
-    .get(videoId) as
-    | { title: string; author: string; duration_sec: number }
-    | undefined;
-  if (!row) return null;
-  return {
-    title: row.title,
-    author: row.author,
-    durationSec: row.duration_sec,
-  };
 }

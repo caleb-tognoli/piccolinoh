@@ -13,5 +13,4 @@ web/dist
 Dockerfile
 docker-compose.yml
 README.md
-MIGRATION.md
 tests

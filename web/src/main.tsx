@@ -1,7 +1,11 @@
 import { render } from "preact";
-import { App } from "./App";
+import { JoinScreen } from "./JoinScreen";
+import { SessionView } from "./SessionView";
+import { session } from "./store";
 import "./style.css";
 
-const root = document.getElementById("app");
-if (!root) throw new Error("no #app element");
-render(<App />, root);
+function App() {
+  return session.value ? <SessionView /> : <JoinScreen />;
+}
+
+render(<App />, document.getElementById("app")!);
