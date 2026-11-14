@@ -119,14 +119,19 @@ const THISIS_MAX_COUNT = 100;
  * Queues a deferred lookup's tracks. The reply becomes the public log line
  * followed by the player; failures go private.
  */
-async function enqueue(interaction: Interaction, session: Session, result: ResolveResult): Promise<unknown> {
+async function enqueue(
+  interaction: Interaction,
+  session: Session,
+  result: ResolveResult,
+  next = false,
+): Promise<unknown> {
   if (!result.ok) {
     await interaction.deleteReply().catch(() => {});
     return interaction.followUp(ephemeral(result.message));
   }
   const action = applyControl(
     session,
-    { kind: "enqueue", tracks: result.tracks },
+    { kind: "enqueue", tracks: result.tracks, next },
     { by: by(interaction), silent: true, ...(result.playlistName ? { label: result.playlistName } : {}) },
   )!;
   return playerBelow(interaction, session, interaction.editReply(lineReply(action)));
@@ -144,6 +149,15 @@ export const commands: Command[] = [
     async execute(interaction, session) {
       await interaction.deferReply(); // lookups can be slow
       return enqueue(interaction, session, await resolveInput(interaction.options.getString("query", true)));
+    },
+  },
+  {
+    data: slash("playnext", "Queue a YouTube or Spotify link, or search YouTube, to play next").addStringOption((o) =>
+      o.setName("query").setDescription("Link or search text").setRequired(true),
+    ),
+    async execute(interaction, session) {
+      await interaction.deferReply();
+      return enqueue(interaction, session, await resolveInput(interaction.options.getString("query", true)), true);
     },
   },
   {
@@ -234,6 +248,14 @@ export const commands: Command[] = [
       act(interaction, session, (opts) => {
         if (session.queue.length === 0) return "Queue is already empty.";
         return applyControl(session, { kind: "clear" }, opts)!;
+      }),
+  },
+  {
+    data: slash("shuffle", "Shuffle the queue (keeps the current video playing)"),
+    execute: (interaction, session) =>
+      act(interaction, session, (opts) => {
+        if (session.queue.length < 2) return "Not enough videos in the queue to shuffle.";
+        return applyControl(session, { kind: "shuffle" }, opts)!;
       }),
   },
   {

@@ -93,8 +93,9 @@ export function describe(action: LastAction): string {
     case "enqueue": {
       if (action.count > 1) {
         const from = action.title ? ` from **${esc(action.title)}**` : "";
-        return `queued ${action.count} tracks${from}`;
+        return `queued ${action.count} tracks${from}${action.next ? " to play next" : ""}`;
       }
+      if (action.next) return `queued **${esc(action.title)}** to play next`;
       const at = action.position ? ` (#${action.position})` : "";
       return `queued **${esc(action.title)}**${at}`;
     }
@@ -106,6 +107,8 @@ export function describe(action: LastAction): string {
       return `moved **${esc(action.title)}** to #${action.to}`;
     case "clear":
       return `cleared ${action.count} track${action.count === 1 ? "" : "s"}`;
+    case "shuffle":
+      return `shuffled ${action.count} tracks`;
     case "autoplay":
       return `turned autoplay ${action.enabled ? "on" : "off"}`;
   }

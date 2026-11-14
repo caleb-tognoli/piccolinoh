@@ -39,10 +39,10 @@ export type LastAction = { by?: string } & (
   | { kind: "start"; title: string }
   | { kind: "autoSkip"; title: string }
   | { kind: "finished" }
-  | { kind: "enqueue"; /** Track title, or the playlist name ("" if unnamed) when count > 1. */ title: string; count: number; /** 1-based queue slot; absent when it started right away. */ position?: number }
+  | { kind: "enqueue"; /** Track title, or the playlist name ("" if unnamed) when count > 1. */ title: string; count: number; /** 1-based queue slot; absent when it started right away. */ position?: number; /** Queued at the front with /playnext. */ next?: true }
   | { kind: "remove" | "restore"; title: string }
   | { kind: "reorder"; title: string; to: number }
-  | { kind: "clear"; count: number }
+  | { kind: "clear" | "shuffle"; count: number }
   | { kind: "autoplay"; enabled: boolean }
 );
 

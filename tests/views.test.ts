@@ -67,6 +67,11 @@ group("formatting", () => {
     expect(describe({ kind: "enqueue", title: "Mix", count: 24, position: 2 })).toBe("queued 24 tracks from **Mix**");
     expect(describe({ kind: "enqueue", title: "", count: 3 })).toBe("queued 3 tracks");
     expect(describe({ kind: "clear", count: 1 })).toBe("cleared 1 track");
+    expect(describe({ kind: "enqueue", title: "Z", count: 1, position: 1, next: true })).toBe("queued **Z** to play next");
+    expect(describe({ kind: "enqueue", title: "Mix", count: 3, position: 1, next: true })).toBe(
+      "queued 3 tracks from **Mix** to play next",
+    );
+    expect(describe({ kind: "shuffle", count: 7 })).toBe("shuffled 7 tracks");
     expect(logLine("skipped **A**", "Ca_leb")).toBe("-# Ca\\_leb skipped **A**");
     expect(logLine("queue finished")).toBe("-# Queue finished");
   });

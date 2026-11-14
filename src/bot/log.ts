@@ -33,7 +33,7 @@ export function mergeGroup(action: LastAction): string | undefined {
     case "restore":
       return action.kind;
     case "enqueue":
-      return action.count === 1 ? "enqueue" : undefined;
+      return action.count === 1 && !action.next ? "enqueue" : undefined;
     case "reorder":
       return `reorder:${action.title}`; // the line shows the latest position
     default:

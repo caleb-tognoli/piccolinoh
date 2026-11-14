@@ -117,6 +117,38 @@ describe("applyControl", () => {
     expect(session.queue.map((q) => q.videoId)).toEqual(["c", "d", "b"]);
   });
 
+  it("enqueue with next puts tracks at the front, in order", () => {
+    enqueue("a", "b", "c");
+    const note = applyControl(session, { kind: "enqueue", tracks: [track("x"), track("y")], next: true });
+    expect(session.queue.map((q) => q.videoId)).toEqual(["x", "y", "b", "c"]);
+    expect(note).toMatchObject({ kind: "enqueue", position: 1, next: true });
+  });
+
+  it("enqueue with next on an empty session just starts playing", () => {
+    const note = applyControl(session, { kind: "enqueue", tracks: [track("a"), track("b")], next: true });
+    expect(session.current?.videoId).toBe("a");
+    expect(session.queue.map((q) => q.videoId)).toEqual(["b"]);
+    expect(note).not.toHaveProperty("next");
+  });
+
+  it("shuffle permutes the queue and leaves current alone", () => {
+    enqueue("a", ...Array.from({ length: 20 }, (_, i) => `t${i}`));
+    const before = session.queue.map((q) => q.videoId);
+    const epoch = session.epoch;
+    const note = applyControl(session, { kind: "shuffle" });
+    const after = session.queue.map((q) => q.videoId);
+    expect(session.current?.videoId).toBe("a");
+    expect([...after].sort()).toEqual([...before].sort());
+    expect(after).not.toEqual(before);
+    expect(session.epoch).toBe(epoch);
+    expect(note).toMatchObject({ kind: "shuffle", count: 20 });
+  });
+
+  it("shuffle is a no-op with fewer than two queued", () => {
+    enqueue("a", "b");
+    expect(applyControl(session, { kind: "shuffle" })).toBeUndefined();
+  });
+
   it("clear empties the queue and leaves current alone", () => {
     enqueue("a", "b", "c");
     const before = session.epoch;

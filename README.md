@@ -63,12 +63,13 @@ once most of the room has.
 | --- | --- |
 | `/join` | Your personal (ephemeral) link to the site |
 | `/play <query>` | Queue videos |
+| `/playnext <query>` | Queue videos at the front of the queue |
 | `/thisis <artist> [count]` | Queue an artist's newest and most popular songs |
 | `/pause`, `/resume`, `/skip` | Transport controls |
 | `/np` | Bring the player to the bottom of this channel |
 | `/queue` | The queue, paged, with play-next / up / down / remove buttons per track (ephemeral) |
 | `/history` | Recently played, with a button to queue each again (ephemeral) |
-| `/remove <position>`, `/move <from> <to>`, `/clear` | Edit the queue |
+| `/remove <position>`, `/move <from> <to>`, `/shuffle`, `/clear` | Edit the queue |
 | `/replay` | Queue the current video again |
 | `/autoplay <enabled>` | When off, playback stops after each video |
 

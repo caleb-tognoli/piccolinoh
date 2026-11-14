@@ -7,11 +7,12 @@ export type ControlAction =
   | { kind: "pause" }
   | { kind: "skip" }
   | { kind: "seek"; toSec: number }
-  | { kind: "enqueue"; tracks: Track[] }
+  | { kind: "enqueue"; tracks: Track[]; /** Put the tracks at the front of the queue instead of the end. */ next?: boolean }
   | { kind: "remove"; index: number }
   | { kind: "restore"; videoId: string }
   | { kind: "reorder"; from: number; to: number }
-  | { kind: "clear" };
+  | { kind: "clear" }
+  | { kind: "shuffle" };
 
 /** How long a removed track can be put back with "restore". */
 export const RESTORE_WINDOW_MS = 30_000;
@@ -75,13 +76,16 @@ export function applyControl(
     case "enqueue": {
       const { tracks } = action;
       if (tracks.length === 0) return;
-      queue.push(...tracks);
       const startsNow = !current;
+      const next = Boolean(action.next) && !startsNow;
+      if (next) queue.unshift(...tracks);
+      else queue.push(...tracks);
       note = {
         kind: "enqueue",
         title: tracks.length > 1 ? (opts.label ?? "") : tracks[0]!.title,
         count: tracks.length,
-        ...(startsNow ? {} : { position: queue.length - tracks.length + 1 }),
+        ...(startsNow ? {} : { position: next ? 1 : queue.length - tracks.length + 1 }),
+        ...(next ? { next: true } : {}),
         ...by,
       };
       if (startsNow) {
@@ -121,6 +125,14 @@ export function applyControl(
       if (queue.length === 0) return;
       note = { kind: "clear", count: queue.length, ...by };
       queue.length = 0;
+      break;
+    case "shuffle":
+      if (queue.length < 2) return;
+      for (let i = queue.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [queue[i], queue[j]] = [queue[j]!, queue[i]!];
+      }
+      note = { kind: "shuffle", count: queue.length, ...by };
       break;
   }
   notifySessionChange(session);
