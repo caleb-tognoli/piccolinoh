@@ -111,6 +111,18 @@ describe("state server protocol", () => {
     expect(session.queue.map((t) => t.videoId)).toEqual(["b", "c"]);
   });
 
+  it("lets a browser reorder the queue", async () => {
+    applyControl(session, { kind: "enqueue", tracks: [track("a", 60), track("b"), track("c"), track("d")] });
+    const { ws } = await join();
+    const reordered = next(
+      ws,
+      (m) => m.type === "state" && m.session.queue.map((t: { videoId: string }) => t.videoId).join() === "d,b,c",
+    );
+    ws.send(JSON.stringify({ type: "control", action: { kind: "reorder", from: 2, to: 0 } }));
+    await reordered;
+    expect(session.queue.map((t) => t.videoId)).toEqual(["d", "b", "c"]);
+  });
+
   it("tells each browser its own id, matching its presence entry", async () => {
     const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
     await new Promise<void>((resolve) => ws.once("open", () => resolve()));

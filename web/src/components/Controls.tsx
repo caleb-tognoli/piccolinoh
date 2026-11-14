@@ -1,6 +1,5 @@
 import {
   Columns2,
-  ListEnd,
   Maximize,
   Minimize,
   Pause,
@@ -53,19 +52,16 @@ export function Transport({ class: className }: { class?: string }) {
   );
 }
 
-/** Read-only: autoplay is switched with /autoplay in Discord. */
+/** Read-only: autoplay is switched with /autoplay in Discord. On is the norm, so only "off" is shown. */
 export function AutoplayStatus() {
-  const on = session.value?.autoplay ?? true;
+  if (session.value?.autoplay ?? true) return null;
   return (
     <span
-      class={cn(
-        "inline-flex min-w-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium",
-        on ? "bg-raised text-muted" : "bg-warning/15 text-warning",
-      )}
-      title="Change with /autoplay in Discord"
+      class="inline-flex min-w-0 items-center gap-1.5 rounded-full bg-warning/15 px-2.5 py-1 text-xs font-medium text-warning"
+      title="The room stops after this video. Turn autoplay back on with /autoplay in Discord."
     >
-      {on ? <ListEnd class="size-3.5 shrink-0" /> : <SquareStop class="size-3.5 shrink-0" />}
-      <span class="truncate">{on ? "Autoplay on" : "Autoplay off · stops after this video"}</span>
+      <SquareStop class="size-3.5 shrink-0" />
+      <span class="truncate">Autoplay off</span>
     </span>
   );
 }

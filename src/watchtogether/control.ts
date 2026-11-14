@@ -115,7 +115,7 @@ export function applyControl(
     }
     case "reorder": {
       const { from, to } = action;
-      if (from >= queue.length || to >= queue.length) return;
+      if (from === to || from >= queue.length || to >= queue.length) return;
       const [track] = queue.splice(from, 1);
       queue.splice(to, 0, track!);
       note = { kind: "reorder", title: track!.title, to: to + 1, ...by };

@@ -1,7 +1,7 @@
 import { z } from "zod";
 
-// Browsers get transport controls and queue removal (with undo, which only
-// restores a recently removed track); adding and reordering tracks goes
+// Browsers get transport controls, queue reordering and queue removal (with
+// undo, which only restores a recently removed track); adding tracks goes
 // through the Discord bot.
 const browserControlSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("play") }),
@@ -10,6 +10,7 @@ const browserControlSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("seek"), toSec: z.number().min(0) }),
   z.object({ kind: z.literal("remove"), index: z.number().int().min(0) }),
   z.object({ kind: z.literal("restore"), videoId: z.string().min(1).max(64) }),
+  z.object({ kind: z.literal("reorder"), from: z.number().int().min(0), to: z.number().int().min(0) }),
 ]);
 
 export const clientMessageSchema = z.discriminatedUnion("type", [

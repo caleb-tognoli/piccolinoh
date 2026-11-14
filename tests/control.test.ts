@@ -149,6 +149,12 @@ describe("applyControl", () => {
     expect(applyControl(session, { kind: "shuffle" })).toBeUndefined();
   });
 
+  it("reorder to the same position is a no-op", () => {
+    enqueue("a", "b", "c");
+    expect(applyControl(session, { kind: "reorder", from: 1, to: 1 })).toBeUndefined();
+    expect(session.queue.map((q) => q.videoId)).toEqual(["b", "c"]);
+  });
+
   it("clear empties the queue and leaves current alone", () => {
     enqueue("a", "b", "c");
     const before = session.epoch;

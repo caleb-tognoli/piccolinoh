@@ -27,7 +27,7 @@ export function History() {
         </button>
       </h2>
       {open && (
-        <ol class="mt-1 flex flex-col">
+        <ol class="scroll-thin mt-1 flex max-h-60 flex-col overflow-y-auto overscroll-contain">
           {played.map((track, i) => (
             <li key={`${i}-${track.videoId}`} class="flex items-baseline gap-3 py-1 text-xs text-muted">
               <span class="min-w-0 flex-1 truncate" title={`${track.title} — ${track.author}`}>
