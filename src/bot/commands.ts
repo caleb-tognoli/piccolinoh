@@ -1,17 +1,16 @@
 import {
   type ChatInputCommandInteraction,
-  type EmbedBuilder,
   MessageFlags,
+  PermissionFlagsBits,
   SlashCommandBuilder,
 } from "discord.js";
 import { config } from "../config.js";
 import { signJoinToken } from "../joinToken.js";
-import { logger } from "../logger.js";
-import { applyControl } from "../watchtogether/control.js";
-import type { Session } from "../watchtogether/session.js";
-import { showBoard } from "./board.js";
-import * as embeds from "./embeds.js";
+import { applyControl, type ControlOptions, setAutoplay } from "../watchtogether/control.js";
+import type { LastAction, Session } from "../watchtogether/session.js";
+import { adoptPlayer, postPlayer } from "./player.js";
 import { resolveInput } from "./resolver.js";
+import { describe, historyView, joinView, logLine, playerView, queueView } from "./views.js";
 
 type Interaction = ChatInputCommandInteraction<"cached">;
 
@@ -20,12 +19,93 @@ export interface Command {
   execute(interaction: Interaction, session: Session): Promise<unknown>;
 }
 
-function reply(interaction: Interaction, embed: EmbedBuilder, ephemeral = false) {
-  return interaction.reply({ embeds: [embed], ...(ephemeral ? { flags: MessageFlags.Ephemeral } : {}) });
+const noPings = { parse: [] };
+
+export function ephemeral(content: string) {
+  return { content, flags: MessageFlags.Ephemeral } as const;
 }
 
-function replyError(interaction: Interaction, message: string) {
-  return reply(interaction, embeds.error(message), true);
+export function joinReply(session: Session, name: string) {
+  const token = signJoinToken({ sid: session.id, gid: session.guildId, dn: name });
+  const url = `${config.PUBLIC_BASE_URL.replace(/\/$/, "")}/#${session.id}&t=${token}`;
+  return { ...joinView(url, name), flags: MessageFlags.Ephemeral } as const;
+}
+
+export function queueReply(session: Session) {
+  return { ...queueView(session, 0), flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral } as const;
+}
+
+// Session changes shared by slash commands and buttons. Each returns an error
+// message, or what it did. Slash commands pass `silent`, since their own reply
+// is the log line.
+
+/** An error message, or the action that was applied. */
+export type Outcome = string | LastAction;
+
+export function pause(session: Session, opts: ControlOptions): Outcome {
+  if (!session.current) return "Nothing to pause.";
+  if (session.current.pausedAtPositionSec != null) return "Already paused.";
+  return applyControl(session, { kind: "pause" }, opts)!;
+}
+
+export function resume(session: Session, opts: ControlOptions): Outcome {
+  if (session.current?.pausedAtPositionSec == null) return "Nothing to resume.";
+  return applyControl(session, { kind: "play" }, opts)!;
+}
+
+export function skip(session: Session, opts: ControlOptions): Outcome {
+  if (!session.current && session.queue.length === 0) return "Nothing to skip.";
+  return applyControl(session, { kind: "skip" }, opts)!;
+}
+
+/** Whether the bot may post plain messages in the interaction's channel. */
+function canPost(interaction: Interaction): boolean {
+  const channel = interaction.channel;
+  if (!channel?.isSendable()) return false;
+  const send = channel.isThread() ? PermissionFlagsBits.SendMessagesInThreads : PermissionFlagsBits.SendMessages;
+  return interaction.appPermissions.has([PermissionFlagsBits.ViewChannel, send]);
+}
+
+/**
+ * Re-posts the player at the bottom of the channel once `reply` has landed.
+ * When the bot can't post there, the player becomes a follow-up to the
+ * command instead. Call it in the same tick as the change.
+ */
+async function playerBelow(interaction: Interaction, session: Session, reply: Promise<unknown>): Promise<unknown> {
+  const channel = interaction.channel;
+  const posted = channel?.isSendable() && canPost(interaction) ? postPlayer(channel, session, reply) : undefined;
+  await reply;
+  if (posted && (await posted)) return undefined;
+  adoptPlayer(await interaction.followUp(playerView(session)), session);
+  return undefined;
+}
+
+/** A command's reply is its log line; Discord's "X used /cmd" header says who. */
+function lineReply(action: LastAction) {
+  return { content: logLine(describe(action)), allowedMentions: noPings };
+}
+
+const by = (interaction: Interaction) => interaction.member.displayName;
+
+/** Runs a change; replies with its error privately, or with its log line followed by the player. */
+function act(interaction: Interaction, session: Session, change: (opts: ControlOptions) => Outcome) {
+  const outcome = change({ by: by(interaction), silent: true });
+  if (typeof outcome === "string") return interaction.reply(ephemeral(outcome));
+  return playerBelow(interaction, session, interaction.reply(lineReply(outcome)));
+}
+
+/** /np: just the player, moved to the bottom of the channel. */
+async function showPlayer(interaction: Interaction, session: Session): Promise<unknown> {
+  const channel = interaction.channel;
+  if (channel?.isSendable() && canPost(interaction)) {
+    const posted = postPlayer(channel, session);
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    if (await posted) return interaction.deleteReply().catch(() => {});
+    return interaction.editReply("Couldn't post the player in this channel.");
+  }
+  await interaction.deferReply();
+  adoptPlayer(await interaction.editReply(playerView(session)), session);
+  return undefined;
 }
 
 function slash(name: string, description: string): SlashCommandBuilder {
@@ -35,107 +115,72 @@ function slash(name: string, description: string): SlashCommandBuilder {
 export const commands: Command[] = [
   {
     data: slash("join", "Get your personal link to this server's watch session"),
-    async execute(interaction, session) {
-      const name = interaction.member.displayName;
-      const token = signJoinToken({ sid: session.id, gid: session.guildId, dn: name });
-      const url = `${config.PUBLIC_BASE_URL.replace(/\/$/, "")}/#${session.id}&t=${token}`;
-      return reply(
-        interaction,
-        embeds.info(
-          "Join the session",
-          `[Open in browser](${url})\n\nThis link is yours — anyone who opens it appears in the room as **${name}**.`,
-        ),
-        true,
-      );
-    },
+    execute: (interaction, session) => interaction.reply(joinReply(session, by(interaction))),
   },
   {
     data: slash("play", "Queue a YouTube or Spotify link, or search YouTube").addStringOption((o) =>
       o.setName("query").setDescription("Link or search text").setRequired(true),
     ),
     async execute(interaction, session) {
+      // Lookups can be slow. The reply becomes the public log line; failures go private.
       await interaction.deferReply();
       const result = await resolveInput(interaction.options.getString("query", true));
-      if (!result.ok) return interaction.editReply({ embeds: [embeds.error(result.message)] });
-
-      const startedNow = !session.current;
-      applyControl(session, { kind: "enqueue", tracks: result.tracks });
-      const embed = result.playlistName
-        ? embeds.queuedMany(result.tracks.length, result.playlistName)
-        : embeds.queued(result.tracks[0]!, startedNow);
-      await interaction.editReply({ embeds: [embed] });
-
-      if (interaction.channel) {
-        await showBoard(interaction.channel, session).catch((err: unknown) =>
-          logger.warn({ err }, "failed to post queue board"),
-        );
+      if (!result.ok) {
+        await interaction.deleteReply().catch(() => {});
+        return interaction.followUp(ephemeral(result.message));
       }
+      const action = applyControl(
+        session,
+        { kind: "enqueue", tracks: result.tracks },
+        { by: by(interaction), silent: true, ...(result.playlistName ? { label: result.playlistName } : {}) },
+      )!;
+      return playerBelow(interaction, session, interaction.editReply(lineReply(action)));
     },
   },
   {
     data: slash("pause", "Pause playback"),
-    async execute(interaction, session) {
-      if (!session.current) return replyError(interaction, "Nothing to pause.");
-      if (session.current.pausedAtPositionSec != null) return replyError(interaction, "Already paused.");
-      applyControl(session, { kind: "pause" });
-      return reply(interaction, embeds.ok("Paused"));
-    },
+    execute: (interaction, session) => act(interaction, session, (opts) => pause(session, opts)),
   },
   {
     data: slash("resume", "Resume playback"),
-    async execute(interaction, session) {
-      if (session.current?.pausedAtPositionSec == null) return replyError(interaction, "Nothing to resume.");
-      applyControl(session, { kind: "play" });
-      return reply(interaction, embeds.ok("Resumed"));
-    },
+    execute: (interaction, session) => act(interaction, session, (opts) => resume(session, opts)),
   },
   {
     data: slash("skip", "Skip the current video"),
-    async execute(interaction, session) {
-      if (!session.current) return replyError(interaction, "Nothing to skip.");
-      applyControl(session, { kind: "skip" });
-      return reply(interaction, embeds.ok("Skipped"));
-    },
+    execute: (interaction, session) => act(interaction, session, (opts) => skip(session, opts)),
   },
   {
-    data: slash("np", "Show what's playing right now"),
-    async execute(interaction, session) {
-      if (!session.current) return replyError(interaction, "Nothing playing.");
-      return reply(interaction, embeds.nowPlaying(session.current));
-    },
+    data: slash("np", "Move the player to the bottom of this channel"),
+    execute: (interaction, session) => showPlayer(interaction, session),
   },
   {
-    data: slash("queue", "Show the queue"),
-    async execute(interaction, session) {
-      return reply(interaction, embeds.queueList(session));
-    },
+    data: slash("queue", "Show and edit the queue (only you see it)"),
+    execute: (interaction, session) => interaction.reply(queueReply(session)),
   },
   {
-    data: slash("history", "Show recently played videos"),
-    async execute(interaction, session) {
-      return reply(interaction, embeds.historyList(session.history));
-    },
+    data: slash("history", "Show recently played videos (only you see it)"),
+    execute: (interaction, session) =>
+      interaction.reply({ ...historyView(session, 0), flags: MessageFlags.IsComponentsV2 | MessageFlags.Ephemeral }),
   },
   {
     data: slash("replay", "Add the current video back to the queue"),
-    async execute(interaction, session) {
-      if (!session.current) return replyError(interaction, "Nothing playing to replay.");
-      const { startedAtServerMs: _s, pausedAtPositionSec: _p, ...track } = session.current;
-      applyControl(session, { kind: "enqueue", tracks: [track] });
-      return reply(interaction, embeds.ok("Replay queued", track.title));
-    },
+    execute: (interaction, session) =>
+      act(interaction, session, (opts) => {
+        if (!session.current) return "Nothing playing to replay.";
+        const { startedAtServerMs: _s, pausedAtPositionSec: _p, ...track } = session.current;
+        return applyControl(session, { kind: "enqueue", tracks: [track] }, opts)!;
+      }),
   },
   {
     data: slash("remove", "Remove a video from the queue").addIntegerOption((o) =>
       o.setName("position").setDescription("Position in the queue").setMinValue(1).setRequired(true),
     ),
-    async execute(interaction, session) {
-      const position = interaction.options.getInteger("position", true);
-      const track = session.queue[position - 1];
-      if (!track) return replyError(interaction, `No video at position ${position}.`);
-      applyControl(session, { kind: "remove", index: position - 1 });
-      return reply(interaction, embeds.ok("Removed", track.title));
-    },
+    execute: (interaction, session) =>
+      act(interaction, session, (opts) => {
+        const position = interaction.options.getInteger("position", true);
+        if (!session.queue[position - 1]) return `No video at position ${position}.`;
+        return applyControl(session, { kind: "remove", index: position - 1 }, opts)!;
+      }),
   },
   {
     data: slash("move", "Move a queued video to a different position")
@@ -145,34 +190,35 @@ export const commands: Command[] = [
       .addIntegerOption((o) =>
         o.setName("to").setDescription("New position").setMinValue(1).setRequired(true),
       ),
-    async execute(interaction, session) {
-      const from = interaction.options.getInteger("from", true);
-      const to = interaction.options.getInteger("to", true);
-      const size = session.queue.length;
-      if (from > size || to > size) {
-        return replyError(interaction, `The queue has ${size} video(s); position out of range.`);
-      }
-      if (from === to) return replyError(interaction, "Source and target are the same position.");
-      applyControl(session, { kind: "reorder", from: from - 1, to: to - 1 });
-      return reply(interaction, embeds.ok("Moved", `Position ${from} → ${to}`));
-    },
+    execute: (interaction, session) =>
+      act(interaction, session, (opts) => {
+        const from = interaction.options.getInteger("from", true);
+        const to = interaction.options.getInteger("to", true);
+        const size = session.queue.length;
+        if (from > size || to > size) {
+          return `The queue has ${size} video${size === 1 ? "" : "s"}; position out of range.`;
+        }
+        if (from === to) return "Source and target are the same position.";
+        return applyControl(session, { kind: "reorder", from: from - 1, to: to - 1 }, opts)!;
+      }),
   },
   {
     data: slash("clear", "Empty the queue (keeps the current video playing)"),
-    async execute(interaction, session) {
-      const count = session.queue.length;
-      if (count === 0) return replyError(interaction, "Queue is already empty.");
-      applyControl(session, { kind: "clear" });
-      return reply(interaction, embeds.ok("Queue cleared", `${count} video${count === 1 ? "" : "s"} removed.`));
-    },
+    execute: (interaction, session) =>
+      act(interaction, session, (opts) => {
+        if (session.queue.length === 0) return "Queue is already empty.";
+        return applyControl(session, { kind: "clear" }, opts)!;
+      }),
   },
   {
     data: slash("autoplay", "Choose whether the next queued video starts automatically").addBooleanOption(
       (o) => o.setName("enabled").setDescription("On or off").setRequired(true),
     ),
-    async execute(interaction, session) {
-      session.autoplay = interaction.options.getBoolean("enabled", true);
-      return reply(interaction, embeds.ok("Autoplay", session.autoplay ? "On" : "Off"));
-    },
+    execute: (interaction, session) =>
+      act(interaction, session, (opts) => {
+        const enabled = interaction.options.getBoolean("enabled", true);
+        if (session.autoplay === enabled) return `Autoplay is already ${enabled ? "on" : "off"}.`;
+        return setAutoplay(session, enabled, opts)!;
+      }),
   },
 ];

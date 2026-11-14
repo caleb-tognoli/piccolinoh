@@ -20,9 +20,9 @@ Everything runs in one Node process (`src/main.ts`).
 - `src/watchtogether/` — the shared session: timeline math (`timeline.ts`),
   control actions (`control.ts`), WebSocket protocol (`ws.ts`, `protocol.ts`),
   HTTP server that also serves the built site (`server.ts`).
-- `src/bot/` — the Discord bot: slash commands (`commands.ts`), video lookup
-  (`resolver.ts`, `youtube.ts`, `spotify.ts`), embeds, and the live queue
-  message (`board.ts`).
+- `src/bot/` — the Discord bot: slash commands (`commands.ts`), button clicks
+  (`buttons.ts`), video lookup (`resolver.ts`, `youtube.ts`, `spotify.ts`),
+  message rendering (`views.ts`) and the live player message (`player.ts`).
 - `src/joinToken.ts` — signed tokens in `/join` links so browsers show your
   Discord name.
 - `web/` — the site (Vite + Preact).
@@ -54,12 +54,35 @@ once most of the room has.
 | Command | |
 | --- | --- |
 | `/join` | Your personal (ephemeral) link to the site |
-| `/play <query>` | Queue videos; posts a live queue message in the channel |
+| `/play <query>` | Queue videos |
 | `/pause`, `/resume`, `/skip` | Transport controls |
-| `/np`, `/queue`, `/history` | What's playing, what's next, what played |
+| `/np` | Bring the player to the bottom of this channel |
+| `/queue` | The queue, paged, with play-next / up / down / remove buttons per track (ephemeral) |
+| `/history` | Recently played, with a button to queue each again (ephemeral) |
 | `/remove <position>`, `/move <from> <to>`, `/clear` | Edit the queue |
 | `/replay` | Queue the current video again |
 | `/autoplay <enabled>` | When off, playback stops after each video |
+
+The bot keeps one **player** message per server, always at the bottom of its
+channel: what's playing with a progress bar (refreshed every 10 s), the next
+track, and Pause/Resume, Skip, Queue and Join buttons. Above it runs the
+**action log**, one small line per change:
+
+- a command's reply is its line (`-# Queued **Song** (#3)`, under Discord's
+  "Caleb used /play"); errors are only shown to whoever ran it;
+- button clicks and site actions post `-# Caleb skipped **Song**`, and quick
+  repeats by the same person edit that line instead of adding one
+  (`-# Caleb removed **A**, **B**`);
+- auto-skips of unembeddable videos and the queue running out are logged;
+  ordinary track changes only update the player.
+
+After each new line the player re-posts below it, and it also re-posts once 5
+other messages have buried it. `/np` moves it down by hand. When nothing is
+left it collapses to a one-line idle state.
+
+The bot needs View Channel, Send Messages and Read Message History in the
+channels it's used in; without Send Messages the player is posted as a
+follow-up to each command instead.
 
 The site itself offers play/pause, skip, seek and removing queue items.
 

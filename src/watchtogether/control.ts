@@ -1,5 +1,5 @@
 import { logger } from "../logger.js";
-import { notifySessionChange, type Session, type Track } from "./session.js";
+import { emitAction, type LastAction, notifySessionChange, type Session, type Track } from "./session.js";
 import { advance, derivePosition, scheduleAdvance } from "./timeline.js";
 
 export type ControlAction =
@@ -23,21 +23,44 @@ function timelineChanged(session: Session): void {
   scheduleAdvance(session);
 }
 
-export function applyControl(session: Session, action: ControlAction): void {
+export interface ControlOptions {
+  /** Display name of whoever did it, for the Discord action log. */
+  by?: string;
+  /** The caller reports the action itself, so the action log skips it. */
+  silent?: boolean;
+  /** Name for a multi-track enqueue (playlist / album). */
+  label?: string;
+  /** Replaces the action the change would report. */
+  note?: LastAction;
+}
+
+/** Applies `action`; returns what happened for the action log, or undefined for no-ops and seeks. */
+export function applyControl(
+  session: Session,
+  action: ControlAction,
+  opts: ControlOptions = {},
+): LastAction | undefined {
   const { current, queue } = session;
+  const by = opts.by ? { by: opts.by } : {};
+  let note: LastAction | undefined;
   switch (action.kind) {
     case "play":
       if (current?.pausedAtPositionSec == null) return;
       current.startedAtServerMs = Date.now() - current.pausedAtPositionSec * 1000;
       current.pausedAtPositionSec = undefined;
       timelineChanged(session);
+      note = { kind: "play", ...by };
       break;
     case "pause":
       if (!current || current.pausedAtPositionSec != null) return;
       current.pausedAtPositionSec = derivePosition(session);
       timelineChanged(session);
+      note = { kind: "pause", ...by };
       break;
     case "skip":
+      if (!current && queue.length === 0) return;
+      // With nothing playing (autoplay stopped), skipping starts the queue head.
+      note = current ? { kind: "skip", title: current.title, ...by } : { kind: "start", title: queue[0]!.title, ...by };
       advance(session);
       scheduleAdvance(session);
       break;
@@ -50,9 +73,18 @@ export function applyControl(session: Session, action: ControlAction): void {
       break;
     }
     case "enqueue": {
-      if (action.tracks.length === 0) return;
-      queue.push(...action.tracks);
-      if (!current) {
+      const { tracks } = action;
+      if (tracks.length === 0) return;
+      queue.push(...tracks);
+      const startsNow = !current;
+      note = {
+        kind: "enqueue",
+        title: tracks.length > 1 ? (opts.label ?? "") : tracks[0]!.title,
+        count: tracks.length,
+        ...(startsNow ? {} : { position: queue.length - tracks.length + 1 }),
+        ...by,
+      };
+      if (startsNow) {
         advance(session);
         scheduleAdvance(session);
       }
@@ -63,6 +95,7 @@ export function applyControl(session: Session, action: ControlAction): void {
       const [track] = queue.splice(action.index, 1);
       session.recentlyRemoved.push({ track: track!, index: action.index, removedAtMs: Date.now() });
       session.recentlyRemoved.splice(0, session.recentlyRemoved.length - RESTORE_KEEP);
+      note = { kind: "remove", title: track!.title, ...by };
       break;
     }
     case "restore": {
@@ -73,20 +106,38 @@ export function applyControl(session: Session, action: ControlAction): void {
       if (at === -1) return;
       const [removed] = session.recentlyRemoved.splice(at, 1);
       queue.splice(Math.min(removed!.index, queue.length), 0, removed!.track);
+      note = { kind: "restore", title: removed!.track.title, ...by };
       break;
     }
     case "reorder": {
       const { from, to } = action;
       if (from >= queue.length || to >= queue.length) return;
-      queue.splice(to, 0, ...queue.splice(from, 1));
+      const [track] = queue.splice(from, 1);
+      queue.splice(to, 0, track!);
+      note = { kind: "reorder", title: track!.title, to: to + 1, ...by };
       break;
     }
     case "clear":
       if (queue.length === 0) return;
+      note = { kind: "clear", count: queue.length, ...by };
       queue.length = 0;
       break;
   }
   notifySessionChange(session);
+  if (!note) return undefined; // seeks aren't logged
+  note = opts.note ?? note;
+  emitAction(session, note, opts.silent);
+  return note;
+}
+
+/** Turns autoplay on or off; undefined when it already was. */
+export function setAutoplay(session: Session, enabled: boolean, opts: ControlOptions = {}): LastAction | undefined {
+  if (session.autoplay === enabled) return undefined;
+  session.autoplay = enabled;
+  const note: LastAction = { kind: "autoplay", enabled, ...(opts.by ? { by: opts.by } : {}) };
+  notifySessionChange(session);
+  emitAction(session, note, opts.silent);
+  return note;
 }
 
 /** Skips the current video once a majority of clients report it can't be embedded. */
@@ -108,5 +159,5 @@ export function handlePlaybackError(
     { videoId, code, votes: reporters.size, clients: session.clients.size },
     "auto-skip: majority reported embed-disabled",
   );
-  applyControl(session, { kind: "skip" });
+  applyControl(session, { kind: "skip" }, { note: { kind: "autoSkip", title: session.current.title } });
 }

@@ -31,6 +31,21 @@ export interface Session {
   recentlyRemoved: RemovedTrack[];
 }
 
+/** Something that happened to a session, for the Discord action log. `by` is the
+ * Discord / join-link display name; absent for anonymous browsers and automatic events. */
+export type LastAction = { by?: string } & (
+  | { kind: "play" | "pause" }
+  | { kind: "skip"; title: string }
+  | { kind: "start"; title: string }
+  | { kind: "autoSkip"; title: string }
+  | { kind: "finished" }
+  | { kind: "enqueue"; /** Track title, or the playlist name ("" if unnamed) when count > 1. */ title: string; count: number; /** 1-based queue slot; absent when it started right away. */ position?: number }
+  | { kind: "remove" | "restore"; title: string }
+  | { kind: "reorder"; title: string; to: number }
+  | { kind: "clear"; count: number }
+  | { kind: "autoplay"; enabled: boolean }
+);
+
 export interface RemovedTrack {
   track: Track;
   index: number;
@@ -68,4 +83,17 @@ export function onSessionChange(fn: Listener): () => void {
 
 export function notifySessionChange(session: Session): void {
   for (const fn of listeners) fn(session);
+}
+
+/** `silent` actions are reported by whoever caused them (a slash command's own reply). */
+type ActionListener = (session: Session, action: LastAction, silent: boolean) => void;
+const actionListeners = new Set<ActionListener>();
+
+export function onAction(fn: ActionListener): () => void {
+  actionListeners.add(fn);
+  return () => actionListeners.delete(fn);
+}
+
+export function emitAction(session: Session, action: LastAction, silent = false): void {
+  for (const fn of actionListeners) fn(session, action, silent);
 }

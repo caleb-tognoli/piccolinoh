@@ -75,9 +75,11 @@ export function attachSocket(ws: WebSocket): void {
       case "ping":
         send(ws, { type: "pong", t0: msg.t0, serverMs: Date.now() });
         return;
-      case "control":
-        applyControl(session, msg.action);
+      case "control": {
+        const { displayName } = clients.get(ws)!;
+        applyControl(session, msg.action, displayName ? { by: displayName } : {});
         return;
+      }
       case "playbackError":
         handlePlaybackError(session, clients.get(ws)!.id, msg.videoId, msg.code);
         return;

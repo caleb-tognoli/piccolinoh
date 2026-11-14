@@ -1,4 +1,4 @@
-import { notifySessionChange, type Session } from "./session.js";
+import { emitAction, notifySessionChange, type Session } from "./session.js";
 
 export function derivePosition(session: Session, serverNowMs = Date.now()): number {
   if (!session.current) return 0;
@@ -27,8 +27,10 @@ export function scheduleAdvance(session: Session): void {
   const remainingMs = Math.max(0, (session.current.durationSec - derivePosition(session)) * 1000);
   session.advanceTimer = setTimeout(() => {
     session.advanceTimer = undefined;
+    const wasPlaying = !!session.current;
     advance(session, session.autoplay);
     scheduleAdvance(session);
     notifySessionChange(session);
+    if (wasPlaying && !session.current && session.queue.length === 0) emitAction(session, { kind: "finished" });
   }, remainingMs);
 }
