@@ -161,6 +161,9 @@ group("queueView", () => {
     expect(b.filter((x) => x.custom_id?.startsWith("queue:rm:"))).toHaveLength(PAGE_SIZE);
     expect(b.find((x) => x.custom_id === "queue:down:1:5:v5")).toBeDefined();
     expect(b.find((x) => x.label === "2/3")?.disabled).toBe(true);
+    expect(b.find((x) => x.label === "⏮")?.custom_id).toBe("queue:page:0:first");
+    expect(b.find((x) => x.label === "⏭")?.custom_id).toBe("queue:page:2:last");
+    expect(b.find((x) => x.custom_id === "queue:top:1:5:v5")?.label).toBe("⏫");
   });
 
   it("disables moves that would leave the queue, and stays under the component cap", () => {
@@ -168,6 +171,8 @@ group("queueView", () => {
     const b = buttons(view);
     expect(b.find((x) => x.custom_id === "queue:down:2:11:v11")?.disabled).toBe(true);
     expect(b.find((x) => x.label === "▶")?.disabled).toBe(true);
+    expect(b.find((x) => x.label === "⏭")?.disabled).toBe(true);
+    expect(b.find((x) => x.label === "⏮")?.disabled).toBe(false);
     const first = buttons(queueView(playing(...ids), 0));
     expect(first.find((x) => x.custom_id === "queue:top:0:0:v0")?.disabled).toBe(true);
     expect(first.find((x) => x.custom_id === "queue:up:0:0:v0")?.disabled).toBe(true);
@@ -185,7 +190,7 @@ group("queueView", () => {
     const view = queueView(playing(), 0, "Removed **x**");
     expect(texts(view)).toContain("**Queue** is empty");
     expect(texts(view)).toContain("-# ✓ Removed **x**");
-    expect(buttons(view).map((b) => b.label)).toEqual(["↻ Refresh"]);
+    expect(buttons(view).map((b) => [b.label, b.custom_id])).toEqual([["↻", "queue:page:0:refresh"]]);
   });
 });
 
@@ -197,7 +202,11 @@ group("historyView", () => {
     const t = texts(view);
     expect(t.indexOf("title h6")).toBeLessThan(t.indexOf("title h2"));
     expect(t).not.toContain("title h1");
-    expect(buttons(view)[0]!.custom_id).toBe("history:add:0:6:h6");
+    const b = buttons(view);
+    expect(b[0]!.custom_id).toBe("history:page:0:refresh");
+    expect(b[1]!.custom_id).toBe("history:add:0:6:h6");
+    expect(b[1]!.label).toBe("➕");
+    expect(b.map((x) => x.label)).toEqual(expect.arrayContaining(["⏮", "◀", "1/2", "▶", "⏭"]));
   });
 
   it("handles an empty history", () => {

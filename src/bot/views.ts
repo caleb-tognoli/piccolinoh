@@ -214,18 +214,25 @@ export function clampPage(page: number, total: number): number {
   return Math.min(Math.max(0, page), pageCount(total) - 1);
 }
 
-function pager(prefix: string, page: number, total: number): ActionRowBuilder<ButtonBuilder> {
+/** First / previous / position / next / last; undefined when everything fits on one page. */
+function pager(prefix: string, page: number, total: number): ActionRowBuilder<ButtonBuilder> | undefined {
   const pages = pageCount(total);
-  const buttons: ButtonBuilder[] = [];
-  if (pages > 1) {
-    buttons.push(
-      button(`${prefix}:page:${page - 1}:prev`, "◀").setDisabled(page === 0),
-      button(`${prefix}:page:${page}:at`, `${page + 1}/${pages}`).setDisabled(true),
-      button(`${prefix}:page:${page + 1}:next`, "▶").setDisabled(page >= pages - 1),
-    );
-  }
-  buttons.push(button(`${prefix}:page:${page}:refresh`, "↻ Refresh"));
-  return row(...buttons);
+  if (pages <= 1) return undefined;
+  const last = pages - 1;
+  return row(
+    button(`${prefix}:page:0:first`, "⏮").setDisabled(page === 0),
+    button(`${prefix}:page:${page - 1}:prev`, "◀").setDisabled(page === 0),
+    button(`${prefix}:page:${page}:at`, `${page + 1}/${pages}`).setDisabled(true),
+    button(`${prefix}:page:${page + 1}:next`, "▶").setDisabled(page >= last),
+    button(`${prefix}:page:${last}:last`, "⏭").setDisabled(page >= last),
+  );
+}
+
+/** The list header, with an icon-only refresh button beside it. */
+function listHeader(prefix: string, page: number, lines: string[]): SectionBuilder {
+  return new SectionBuilder()
+    .addTextDisplayComponents(text(lines.join("\n")))
+    .setButtonAccessory(button(`${prefix}:page:${page}:refresh`, "↻"));
 }
 
 function totalDuration(tracks: Track[]): string {
@@ -260,7 +267,7 @@ export function queueView(session: Session, page: number, notice?: string, nowMs
       : ["**Queue** is empty · `/play` to add something"];
   if (current) header.push(`-# Now playing: ${esc(current.title)}`);
   if (notice) header.push(`-# ✓ ${notice}`);
-  container.addTextDisplayComponents(text(header.join("\n")));
+  container.addSectionComponents(listHeader(ID.queue, page, header));
 
   const start = page * PAGE_SIZE;
   queue.slice(start, start + PAGE_SIZE).forEach((track, i) => {
@@ -272,7 +279,7 @@ export function queueView(session: Session, page: number, notice?: string, nowMs
     container.addTextDisplayComponents(text(`\`${index + 1}.\` ${trackLine(track)}${eta}`));
     container.addActionRowComponents(
       row(
-        button(id("top"), "⏫ Next").setDisabled(first),
+        button(id("top"), "⏫").setDisabled(first),
         button(id("up"), "▲").setDisabled(first),
         button(id("down"), "▼").setDisabled(last),
         button(id("rm"), "✕", ButtonStyle.Danger),
@@ -280,7 +287,8 @@ export function queueView(session: Session, page: number, notice?: string, nowMs
     );
   });
 
-  container.addActionRowComponents(pager(ID.queue, page, queue.length));
+  const pages = pager(ID.queue, page, queue.length);
+  if (pages) container.addActionRowComponents(pages);
   return v2(container);
 }
 
@@ -295,7 +303,8 @@ export function historyView(session: Session, page: number, notice?: string): V2
       ? [`**Recently played** · ${history.length} track${history.length === 1 ? "" : "s"}`]
       : ["Nothing has played yet."];
   if (notice) header.push(`-# ✓ ${notice}`);
-  container.addTextDisplayComponents(text(header.join("\n")));
+  if (history.length > 0) container.addSectionComponents(listHeader(ID.history, page, header));
+  else container.addTextDisplayComponents(text(header.join("\n")));
 
   const start = page * PAGE_SIZE;
   for (let i = start; i < Math.min(start + PAGE_SIZE, history.length); i++) {
@@ -304,11 +313,12 @@ export function historyView(session: Session, page: number, notice?: string): V2
     container.addSectionComponents(
       new SectionBuilder()
         .addTextDisplayComponents(text(trackLine(track)))
-        .setButtonAccessory(button(`${ID.history}:add:${page}:${index}:${track.videoId}`, "+ Queue")),
+        .setButtonAccessory(button(`${ID.history}:add:${page}:${index}:${track.videoId}`, "➕")),
     );
   }
 
-  if (history.length > 0) container.addActionRowComponents(pager(ID.history, page, history.length));
+  const pages = pager(ID.history, page, history.length);
+  if (pages) container.addActionRowComponents(pages);
   return v2(container);
 }
 
