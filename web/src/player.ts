@@ -1,7 +1,7 @@
 import { effect } from "@preact/signals";
 import { trackPosition, type WSClient } from "./net";
 import type { SerializedSession } from "./protocol";
-import { hideToast, lagging, session, showToast } from "./store";
+import { hideToast, lagging, muted, session, showToast, volume } from "./store";
 
 const IFRAME_API_URL = "https://www.youtube.com/iframe_api";
 const SYNC_INTERVAL_MS = 2000;
@@ -50,9 +50,16 @@ export async function attachPlayer(containerId: string, ws: WSClient): Promise<(
     player = new window.YT!.Player(containerId, {
       height: "100%",
       width: "100%",
-      playerVars: { controls: 1, playsinline: 1, autoplay: 0 },
+      // The frame is display-only: playback changes made inside it never reach the server,
+      // so everyone drives the room from our own controls instead.
+      playerVars: { controls: 0, disablekb: 1, fs: 0, iv_load_policy: 3, rel: 0, playsinline: 1, autoplay: 0 },
       events: {
-        onReady: () => resolveReady(),
+        onReady: (ev) => {
+          const iframe = ev.target.getIframe();
+          iframe.tabIndex = -1;
+          iframe.setAttribute("aria-hidden", "true");
+          resolveReady();
+        },
         onStateChange: (ev) => onStateChange(ev.data),
         onError: (ev) => onError(ev.data),
       },
@@ -154,6 +161,15 @@ export async function attachPlayer(containerId: string, ws: WSClient): Promise<(
     applyServerState();
   });
 
+  const unsubVolume = effect(() => {
+    const level = volume.value;
+    const silent = muted.value;
+    if (!player) return;
+    player.setVolume(level);
+    if (silent) player.mute();
+    else player.unMute();
+  });
+
   const syncTimer = window.setInterval(() => {
     if (!player) return;
     const s = session.value;
@@ -193,6 +209,7 @@ export async function attachPlayer(containerId: string, ws: WSClient): Promise<(
     window.clearInterval(syncTimer);
     if (reconcileTimer != null) window.clearTimeout(reconcileTimer);
     unsubSession();
+    unsubVolume();
     player?.destroy();
     player = null;
   };

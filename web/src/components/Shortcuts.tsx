@@ -4,7 +4,15 @@ import { useCallback, useEffect, useRef } from "preact/hooks";
 import { formatSec } from "../lib/format";
 import { trackPosition } from "../net";
 import type { ControlAction } from "../protocol";
-import { connected, sendControl, session, showToast, toggleTheater } from "../store";
+import {
+  connected,
+  sendControl,
+  session,
+  showToast,
+  toggleFullscreen,
+  toggleMute,
+  toggleTheater,
+} from "../store";
 import { Button } from "../ui/Button";
 
 const FEEDBACK_TOAST_MS = 1500;
@@ -14,6 +22,8 @@ const SHORTCUTS: [keys: string[], label: string][] = [
   [["←", "→"], "Back / forward 5 s"],
   [["J", "L"], "Back / forward 10 s"],
   [["N"], "Skip to the next video"],
+  [["M"], "Mute / unmute (just you)"],
+  [["F"], "Full screen (just you)"],
   [["T"], "Theater mode (wide screens)"],
   [["?"], "Show these shortcuts"],
 ];
@@ -40,9 +50,10 @@ export function useKeyboardShortcuts(onHelp: () => void): void {
         return;
       }
       const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-      if (key === "t") {
+      const local = { t: toggleTheater, m: toggleMute, f: toggleFullscreen }[key];
+      if (local) {
         e.preventDefault();
-        toggleTheater();
+        local();
         return;
       }
       const current = session.value?.current;
@@ -117,7 +128,9 @@ export function ShortcutsHelp({ dialogRef }: { dialogRef: RefObject<HTMLDialogEl
             </div>
           ))}
         </dl>
-        <p class="mt-4 text-xs text-muted">Controls are shared: everyone in the room sees the change.</p>
+        <p class="mt-4 text-xs text-muted">
+          Playback controls are shared: everyone in the room sees the change. Volume and screen size are just for you.
+        </p>
       </dialog>
     </>
   );

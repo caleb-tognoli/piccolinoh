@@ -1,5 +1,5 @@
 import { session } from "../store";
-import { AutoplayStatus, TheaterToggle, Transport } from "./Controls";
+import { AutoplayStatus, FullscreenToggle, TheaterToggle, Transport, VolumeControl } from "./Controls";
 import { Progress } from "./Progress";
 
 /**
@@ -28,10 +28,12 @@ export function NowPlaying() {
       <Transport class="lg:col-start-1 lg:row-start-2" />
       <div class="flex min-w-0 items-center justify-end gap-1 lg:col-start-3 lg:row-start-2">
         <AutoplayStatus />
+        <VolumeControl />
         {/* Wrapped: the button's own display class would win over `hidden`. */}
         <span class="hidden lg:contents">
           <TheaterToggle />
         </span>
+        <FullscreenToggle />
       </div>
     </section>
   );

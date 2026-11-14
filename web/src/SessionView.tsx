@@ -7,7 +7,7 @@ import { PlayerFrame } from "./components/PlayerFrame";
 import { Sidebar } from "./components/Sidebar";
 import { ShortcutsHelp, useKeyboardShortcuts, useShortcutsDialog } from "./components/Shortcuts";
 import { Toast } from "./components/Toast";
-import { session, theater } from "./store";
+import { fullscreen, session, theater } from "./store";
 import { cn } from "./ui/cn";
 
 const APP_TITLE = "piccolinoh";
@@ -69,7 +69,8 @@ export function SessionView() {
         </main>
         <Sidebar theater={wide} />
       </div>
-      <Toast />
+      {/* In fullscreen only the stage is shown, so the stage renders the toast instead. */}
+      {!fullscreen.value && <Toast />}
     </>
   );
 }

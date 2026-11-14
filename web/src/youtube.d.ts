@@ -5,6 +5,10 @@ declare namespace YT {
     videoId?: string;
     playerVars?: {
       controls?: 0 | 1;
+      disablekb?: 0 | 1;
+      fs?: 0 | 1;
+      iv_load_policy?: 1 | 3;
+      rel?: 0 | 1;
       playsinline?: 0 | 1;
       autoplay?: 0 | 1;
     };
@@ -24,6 +28,10 @@ declare namespace YT {
     loadVideoById(options: { videoId: string; startSeconds?: number }): void;
     getCurrentTime(): number;
     getPlayerState(): number;
+    getIframe(): HTMLIFrameElement;
+    setVolume(volume: number): void;
+    mute(): void;
+    unMute(): void;
     destroy(): void;
   }
 }
