@@ -3,7 +3,7 @@
 import { logger } from "../logger.js";
 import type { Track } from "../watchtogether/session.js";
 import { getAlbum, getTrack, parseSpotifyUrl, spotifyEnabled, type SpotifyTrack } from "./spotify.js";
-import { getPlaylist, getVideo, isEmbeddable, searchSongs, searchVideos } from "./youtube.js";
+import { getArtistCatalog, getPlaylist, getVideo, isEmbeddable, searchSongs, searchVideos } from "./youtube.js";
 
 const VIDEO_ID_RE = /^[\w-]{11}$/;
 const SPOTIFY_TRANSLATION_CONCURRENCY = 5;
@@ -132,6 +132,41 @@ async function resolveSpotify(input: string): Promise<ResolveResult> {
   );
   const tracks = translated.filter((t): t is Track => t !== null);
   return tracks.length > 0 ? { ok: true, tracks, playlistName: source.name } : fail("No results.");
+}
+
+/** Same song across uploads/versions: "Opalite" and "OPALITE" match, "Opalite (Live)" doesn't. */
+const songKey = (t: Track) => t.title.toLowerCase().replace(/[^\p{L}\p{N}()]+/gu, "");
+
+/**
+ * A "This Is"-style list: the newest releases' tracks first, then the artist's top
+ * songs, each song once, up to `limit`.
+ */
+export function artistMix(latest: Track[], topSongs: Track[], limit: number): Track[] {
+  const seen = new Set<string>();
+  const out: Track[] = [];
+  for (const t of [...latest, ...topSongs]) {
+    const key = songKey(t);
+    if (seen.has(key) || seen.has(t.videoId)) continue;
+    seen.add(key).add(t.videoId);
+    out.push(t);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+/** /thisis: an artist's newest and most popular songs from YouTube Music. */
+export async function resolveArtist(query: string, limit: number): Promise<ResolveResult> {
+  try {
+    const catalog = await getArtistCatalog(query.trim());
+    if (!catalog) return fail(`No artist found for **${query}**.`);
+    const tracks = artistMix(catalog.latest, catalog.topSongs, limit);
+    return tracks.length > 0
+      ? { ok: true, tracks, playlistName: `This Is ${catalog.name}` }
+      : fail(`Couldn't find any playable songs by **${catalog.name}**.`);
+  } catch (err) {
+    logger.error({ err, query }, "resolveArtist failed");
+    return fail(`Error: ${(err as Error).message}`);
+  }
 }
 
 export async function resolveInput(input: string): Promise<ResolveResult> {

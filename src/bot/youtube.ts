@@ -82,6 +82,99 @@ export function getPlaylist(listId: string): Promise<{ name: string; tracks: Tra
   });
 }
 
+/** "883M plays" → 883e6; 0 when the label is missing or unreadable. */
+export function parsePlays(label: string | undefined): number {
+  const m = /([\d.,]+)\s*([KMB])?\s*plays?/i.exec(label ?? "");
+  if (!m) return 0;
+  const scale = { K: 1e3, M: 1e6, B: 1e9 }[m[2]?.toUpperCase() as "K" | "M" | "B"] ?? 1;
+  return Number(m[1]!.replace(/,/g, "")) * scale;
+}
+
+/** How many of an artist's newest releases to pull, and how many tracks from each. */
+const LATEST_RELEASES = 2;
+const TRACKS_PER_RELEASE = 3;
+
+export interface ArtistCatalog {
+  name: string;
+  /** YouTube Music's "Top songs" for the artist: current popularity, so new hits rank high. */
+  topSongs: Track[];
+  /** Most-played tracks of the newest releases from this or last year, newest release first. */
+  latest: Track[];
+}
+
+/** Album / single tracks often have no artist column; fill in the page's artist. */
+function withAuthor(t: Track, artist: string): Track {
+  return t.author ? t : { ...t, author: artist };
+}
+
+/**
+ * The release's most-played tracks. Tracks crediting someone else are dropped, which
+ * also keeps compilations from an "Appears on" shelf down to the artist's own song.
+ */
+async function releaseTracks(yt: Innertube, albumId: string, artist: string): Promise<Track[]> {
+  const album = await yt.music.getAlbum(albumId);
+  const ranked = album.contents
+    .map((node) => ({ node, plays: parsePlays(node.flex_columns.map((c) => c.title.toString()).join(" ")) }))
+    .sort((a, b) => b.plays - a.plays); // stable: unknown plays keep the album order
+  const own = tracks(
+    ranked.map((r) => r.node),
+    PLAYLIST_CAP,
+  ).filter((t) => !t.author || t.author.toLowerCase().includes(artist.toLowerCase()));
+  // A single padded with "(Acoustic Version)" / "(Sped Up)" variants should add one song, not three.
+  const seen = new Set<string>();
+  const picked = own.filter((t) => {
+    const base = baseTitle(t.title);
+    return !seen.has(base) && !!seen.add(base);
+  });
+  return picked.slice(0, TRACKS_PER_RELEASE).map((t) => withAuthor(t, artist));
+}
+
+/** "Patient Zero (Piano Version)" / "Patient Zero - Live" → "patient zero". */
+export function baseTitle(title: string): string {
+  return title
+    .replace(/\s*[([].*?[)\]]/g, "")
+    .replace(/\s+-\s+.*$/, "")
+    .trim()
+    .toLowerCase() || title.toLowerCase();
+}
+
+/** Finds an artist on YouTube Music and reads their top songs and newest releases. */
+export function getArtistCatalog(query: string): Promise<ArtistCatalog | null> {
+  return withClient(async (yt) => {
+    const search = await yt.music.search(query, { type: "artist" });
+    const hit = search.artists?.contents.find((a) => a.id && a.item_type === "artist");
+    if (!hit?.id) return null;
+    const page = await yt.music.getArtist(hit.id);
+    const name = page.header?.title?.toString() || hit.name || query;
+
+    // Matched by shape, not by its (localized) "Top songs" title: the only list shelf
+    // on an artist page, linking to the full playlist.
+    const shelf = page.sections.find((s) => s.is(YTNodes.MusicShelf) && s.endpoint);
+    let topSongs: Track[] = [];
+    if (shelf?.is(YTNodes.MusicShelf)) {
+      const full = await shelf.endpoint!.call(yt.actions, { client: "YTMUSIC", parse: true });
+      const list = full.contents_memo?.getType(YTNodes.MusicPlaylistShelf)?.[0]?.contents ?? shelf.contents;
+      topSongs = tracks(list, PLAYLIST_CAP).map((t) => withAuthor(t, name));
+    }
+
+    const minYear = new Date().getFullYear() - 1;
+    const releases = page.sections
+      .flatMap((s) => (s.is(YTNodes.MusicCarouselShelf) ? s.contents.filterType(YTNodes.MusicTwoRowItem) : []))
+      .filter((r) => r.item_type === "album" && r.id && Number(r.year) >= minYear)
+      .sort((a, b) => Number(b.year) - Number(a.year)) // stable: carousels list newest first
+      .slice(0, LATEST_RELEASES);
+    const latest: Track[] = [];
+    for (const release of releases) {
+      try {
+        latest.push(...(await releaseTracks(yt, release.id!, name)));
+      } catch (err) {
+        logger.warn({ err, release: release.id }, "couldn't read release tracks");
+      }
+    }
+    return { name, topSongs, latest };
+  });
+}
+
 /**
  * Looks up one video. `embeddable` is false only when YouTube clearly says so;
  * if the player endpoint refuses us (e.g. a bot check) it stays unknown (null).

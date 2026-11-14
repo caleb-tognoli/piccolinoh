@@ -7,6 +7,7 @@ vi.mock("../src/bot/youtube.js", () => ({
   getVideo: vi.fn(),
   getPlaylist: vi.fn(),
   isEmbeddable: vi.fn(),
+  getArtistCatalog: vi.fn(),
 }));
 vi.mock("../src/bot/spotify.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../src/bot/spotify.js")>()),
@@ -17,7 +18,7 @@ vi.mock("../src/bot/spotify.js", async (importOriginal) => ({
 
 const youtube = vi.mocked(await import("../src/bot/youtube.js"));
 const spotify = vi.mocked(await import("../src/bot/spotify.js"));
-const { rankByDuration, resolveInput } = await import("../src/bot/resolver.js");
+const { artistMix, rankByDuration, resolveArtist, resolveInput } = await import("../src/bot/resolver.js");
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -28,6 +29,47 @@ describe("rankByDuration", () => {
   it("moves tracks within tolerance first and keeps order otherwise", () => {
     const ranked = rankByDuration([track("a", 300), track("b", 200), track("c", 400), track("d", 203)], 201);
     expect(ranked.map((t) => t.videoId)).toEqual(["b", "d", "a", "c"]);
+  });
+});
+
+const song = (videoId: string, title: string) => ({ ...track(videoId), title });
+
+describe("artistMix", () => {
+  it("puts the newest releases first and lists each song once", () => {
+    const latest = [song("new1", "Opalite"), song("new2", "Elizabeth Taylor")];
+    const top = [song("top1", "Blank Space"), song("top2", "OPALITE"), song("new2", "Elizabeth Taylor"), song("top3", "Style")];
+    expect(artistMix(latest, top, 50).map((t) => t.videoId)).toEqual(["new1", "new2", "top1", "top3"]);
+  });
+
+  it("keeps distinct versions and stops at the limit", () => {
+    const top = [song("a", "Song"), song("b", "Song (Live)"), song("c", "Other")];
+    expect(artistMix([], top, 2).map((t) => t.videoId)).toEqual(["a", "b"]);
+  });
+});
+
+describe("resolveArtist", () => {
+  it("names the list after the artist YouTube Music found", async () => {
+    youtube.getArtistCatalog.mockResolvedValue({ name: "Taylor Swift", latest: [track("n")], topSongs: [track("t")] });
+    expect(await resolveArtist("taylor swift", 50)).toEqual({
+      ok: true,
+      tracks: [track("n"), track("t")],
+      playlistName: "This Is Taylor Swift",
+    });
+  });
+
+  it("explains when no artist matches", async () => {
+    youtube.getArtistCatalog.mockResolvedValue(null);
+    expect(await resolveArtist("nobody", 50)).toMatchObject({ ok: false });
+  });
+
+  it("explains when the artist has no playable songs", async () => {
+    youtube.getArtistCatalog.mockResolvedValue({ name: "Quiet", latest: [], topSongs: [] });
+    expect(await resolveArtist("quiet", 50)).toMatchObject({ ok: false });
+  });
+
+  it("reports lookup errors instead of throwing", async () => {
+    youtube.getArtistCatalog.mockRejectedValue(new Error("boom"));
+    expect(await resolveArtist("x", 50)).toEqual({ ok: false, message: "Error: boom" });
   });
 });
 

@@ -9,7 +9,7 @@ import { signJoinToken } from "../joinToken.js";
 import { applyControl, type ControlOptions, setAutoplay } from "../watchtogether/control.js";
 import type { LastAction, Session } from "../watchtogether/session.js";
 import { adoptPlayer, postPlayer } from "./player.js";
-import { resolveInput } from "./resolver.js";
+import { type ResolveResult, resolveArtist, resolveInput } from "./resolver.js";
 import { describe, historyView, joinView, logLine, playerView, queueView } from "./views.js";
 
 type Interaction = ChatInputCommandInteraction<"cached">;
@@ -112,6 +112,26 @@ function slash(name: string, description: string): SlashCommandBuilder {
   return new SlashCommandBuilder().setName(name).setDescription(description);
 }
 
+const THISIS_DEFAULT_COUNT = 50;
+const THISIS_MAX_COUNT = 100;
+
+/**
+ * Queues a deferred lookup's tracks. The reply becomes the public log line
+ * followed by the player; failures go private.
+ */
+async function enqueue(interaction: Interaction, session: Session, result: ResolveResult): Promise<unknown> {
+  if (!result.ok) {
+    await interaction.deleteReply().catch(() => {});
+    return interaction.followUp(ephemeral(result.message));
+  }
+  const action = applyControl(
+    session,
+    { kind: "enqueue", tracks: result.tracks },
+    { by: by(interaction), silent: true, ...(result.playlistName ? { label: result.playlistName } : {}) },
+  )!;
+  return playerBelow(interaction, session, interaction.editReply(lineReply(action)));
+}
+
 export const commands: Command[] = [
   {
     data: slash("join", "Get your personal link to this server's watch session"),
@@ -122,19 +142,25 @@ export const commands: Command[] = [
       o.setName("query").setDescription("Link or search text").setRequired(true),
     ),
     async execute(interaction, session) {
-      // Lookups can be slow. The reply becomes the public log line; failures go private.
+      await interaction.deferReply(); // lookups can be slow
+      return enqueue(interaction, session, await resolveInput(interaction.options.getString("query", true)));
+    },
+  },
+  {
+    data: slash("thisis", "Queue an artist's newest and most popular songs")
+      .addStringOption((o) => o.setName("artist").setDescription("Artist name").setRequired(true))
+      .addIntegerOption((o) =>
+        o
+          .setName("count")
+          .setDescription(`How many songs (default ${THISIS_DEFAULT_COUNT})`)
+          .setMinValue(1)
+          .setMaxValue(THISIS_MAX_COUNT),
+      ),
+    async execute(interaction, session) {
       await interaction.deferReply();
-      const result = await resolveInput(interaction.options.getString("query", true));
-      if (!result.ok) {
-        await interaction.deleteReply().catch(() => {});
-        return interaction.followUp(ephemeral(result.message));
-      }
-      const action = applyControl(
-        session,
-        { kind: "enqueue", tracks: result.tracks },
-        { by: by(interaction), silent: true, ...(result.playlistName ? { label: result.playlistName } : {}) },
-      )!;
-      return playerBelow(interaction, session, interaction.editReply(lineReply(action)));
+      const artist = interaction.options.getString("artist", true);
+      const count = interaction.options.getInteger("count") ?? THISIS_DEFAULT_COUNT;
+      return enqueue(interaction, session, await resolveArtist(artist, count));
     },
   },
   {

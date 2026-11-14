@@ -46,6 +46,14 @@ accepts:
   an upload within 5 s of Spotify's length. Spotify playlists can't be read
   with Client Credentials, so they are rejected with a hint.
 
+`/thisis <artist> [count]` is a "This Is"-style list built from YouTube Music
+rather than Spotify (Spotify blocks Client Credentials apps from its own
+playlists and from artist top tracks). It finds the artist, then queues up to
+`count` songs (default 50, max 100): the top 3 most-played tracks of their two
+newest releases from this or last year, followed by the artist page's
+"Top songs" list (ranked by current plays, so new hits sit next to classics),
+with each song listed once.
+
 If a queued video still refuses to embed, browsers report it and the bot skips it
 once most of the room has.
 
@@ -55,6 +63,7 @@ once most of the room has.
 | --- | --- |
 | `/join` | Your personal (ephemeral) link to the site |
 | `/play <query>` | Queue videos |
+| `/thisis <artist> [count]` | Queue an artist's newest and most popular songs |
 | `/pause`, `/resume`, `/skip` | Transport controls |
 | `/np` | Bring the player to the bottom of this channel |
 | `/queue` | The queue, paged, with play-next / up / down / remove buttons per track (ephemeral) |
