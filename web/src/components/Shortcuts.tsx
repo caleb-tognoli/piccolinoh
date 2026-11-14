@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef } from "preact/hooks";
 import { formatSec } from "../lib/format";
 import { trackPosition } from "../net";
 import type { ControlAction } from "../protocol";
-import { connected, sendControl, session, showToast } from "../store";
+import { connected, sendControl, session, showToast, toggleTheater } from "../store";
 import { Button } from "../ui/Button";
 
 const FEEDBACK_TOAST_MS = 1500;
@@ -14,6 +14,7 @@ const SHORTCUTS: [keys: string[], label: string][] = [
   [["←", "→"], "Back / forward 5 s"],
   [["J", "L"], "Back / forward 10 s"],
   [["N"], "Skip to the next video"],
+  [["T"], "Theater mode (wide screens)"],
   [["?"], "Show these shortcuts"],
 ];
 
@@ -38,9 +39,14 @@ export function useKeyboardShortcuts(onHelp: () => void): void {
         onHelp();
         return;
       }
+      const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      if (key === "t") {
+        e.preventDefault();
+        toggleTheater();
+        return;
+      }
       const current = session.value?.current;
       if (!current || !connected.value) return;
-      const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
       let action: ControlAction | null = null;
       if (key === " " || key === "k") {
         action = { kind: current.pausedAtPositionSec != null ? "play" : "pause" };

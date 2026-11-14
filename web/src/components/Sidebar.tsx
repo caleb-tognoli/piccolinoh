@@ -7,8 +7,8 @@ import { Queue } from "./Queue";
 
 type Tab = "queue" | "room";
 
-/** Queue + room. Stacked on wide screens; tabs on phones so neither is a long scroll away. */
-export function Sidebar() {
+/** Queue + room. Stacked beside the player (below it in theater mode) on wide screens; tabs on phones so neither is a long scroll away. */
+export function Sidebar({ theater }: { theater?: boolean }) {
   const [tab, setTab] = useState<Tab>("queue");
   const tabs: [Tab, string, number][] = [
     ["queue", "Queue", session.value?.queue.length ?? 0],
@@ -17,7 +17,12 @@ export function Sidebar() {
   const shownOn = (t: Tab) => (tab === t ? "flex" : "hidden lg:flex");
 
   return (
-    <aside class="flex min-w-0 flex-col gap-4 lg:col-start-2 lg:row-span-2 lg:row-start-1">
+    <aside
+      class={cn(
+        "flex min-w-0 flex-col gap-4 lg:col-start-3",
+        theater ? "lg:row-start-2" : "lg:row-span-2 lg:row-start-1",
+      )}
+    >
       <div role="tablist" aria-label="Queue and room" class="grid grid-cols-2 gap-1 rounded-xl bg-surface p-1 lg:hidden">
         {tabs.map(([id, label, count]) => (
           <button

@@ -26,6 +26,22 @@
 @layer base {
   :root {
     color-scheme: dark;
+
+    /* Wide-screen stage, sized like YouTube's watch page: the player grows with the
+       window but stays short enough that the controls under it are on screen. */
+    --header-h: 3.5rem;
+    /* The now-playing bar under the player, plus the gaps around it. */
+    --below-player: 10.5rem;
+    --side-w: 20rem;
+    --player-w: max(36rem, calc((100dvh - var(--header-h) - 1.5rem - var(--below-player)) * 16 / 9));
+    --theater-h: max(20rem, min(56.25vw, calc(100dvh - var(--header-h) - var(--below-player))));
+
+    @media (width >= 80rem) {
+      --side-w: 24rem;
+    }
+    @media (width >= 96rem) {
+      --side-w: 26rem;
+    }
   }
   body {
     @apply min-h-dvh bg-bg font-sans text-[15px] leading-normal text-ink antialiased;

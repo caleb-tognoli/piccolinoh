@@ -20,6 +20,28 @@ export const connected = signal(true);
 /** Shown on the join screen; survives leaving the session view. */
 export const joinError = signal<{ message: string; canRetry: boolean } | null>(null);
 
+const THEATER_KEY = "piccolinoh:theater";
+
+function readTheater(): boolean {
+  try {
+    return localStorage.getItem(THEATER_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** Wide screens only: player spans the full window width, queue and room move below it. */
+export const theater = signal(readTheater());
+
+export function toggleTheater(): void {
+  theater.value = !theater.value;
+  try {
+    localStorage.setItem(THEATER_KEY, theater.value ? "1" : "0");
+  } catch {
+    // storage blocked (private window); the choice just isn't remembered
+  }
+}
+
 export function sendControl(action: ControlAction): void {
   wsClient.value?.send({ type: "control", action });
 }
