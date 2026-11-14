@@ -10,7 +10,10 @@ export function EmptyStage() {
 
   return (
     <div class="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[radial-gradient(ellipse_at_center,var(--color-surface),var(--color-bg)_75%)] p-6 text-center">
-      <img src="/piccolinoh-cutout.png" alt="" class="size-16 drop-shadow-xl sm:size-32" />
+      <picture>
+        <source srcset="/piccolinoh-cutout.png" media="(prefers-reduced-motion: reduce)" />
+        <img src="/piccolinoh-dance.webp" alt="" class="size-24 drop-shadow-xl sm:size-40" />
+      </picture>
       {next ? (
         <>
           <div>
