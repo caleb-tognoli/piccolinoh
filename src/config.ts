@@ -9,7 +9,10 @@ const optional = z.preprocess(
 const schema = z
   .object({
     DISCORD_TOKEN: z.string().min(1, "DISCORD_TOKEN is required"),
-    DISCORD_GUILD_ID: z.string().regex(/^\d{17,20}$/, "DISCORD_GUILD_ID must be a snowflake"),
+    DISCORD_GUILD_ID: z.preprocess(
+      (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+      z.string().regex(/^\d{17,20}$/, "DISCORD_GUILD_ID must be a snowflake").optional(),
+    ),
     HTTP_PORT: z.coerce.number().int().min(1).max(65535).default(3000),
     PUBLIC_BASE_URL: z.string().url().default("http://localhost:3000"),
     JOIN_TOKEN_SECRET: z.string().min(32, "JOIN_TOKEN_SECRET must be at least 32 characters"),

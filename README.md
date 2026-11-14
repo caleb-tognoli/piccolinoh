@@ -101,8 +101,13 @@ Requires Node.js 22+ and a Discord application with a bot user (Docker optional)
 
 ```bash
 corepack pnpm install
-cp .env.example .env   # fill DISCORD_TOKEN, DISCORD_GUILD_ID, JOIN_TOKEN_SECRET
+cp .env.example .env   # fill DISCORD_TOKEN, JOIN_TOKEN_SECRET
 ```
+
+Slash commands are registered globally, so the bot works in every server it's
+invited to, each with its own room. Set `DISCORD_GUILD_ID` to register them in
+one server only, where changes show up instantly instead of after up to an
+hour. Switching back to global removes those server-only commands.
 
 ### Run with Docker
 
