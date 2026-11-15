@@ -5,6 +5,7 @@ export interface Track {
   title: string;
   author: string;
   durationSec: number;
+  startSec?: number;
 }
 
 export interface CurrentTrack extends Track {
@@ -29,7 +30,8 @@ export type ControlAction =
   | { kind: "seek"; toSec: number }
   | { kind: "remove"; index: number }
   | { kind: "restore"; videoId: string }
-  | { kind: "reorder"; from: number; to: number };
+  | { kind: "reorder"; from: number; to: number }
+  | { kind: "autoplayOn" };
 
 export type ClientMessage =
   | { type: "hello"; sessionId: string; joinToken?: string }
@@ -43,7 +45,8 @@ export interface PresenceMember {
 }
 
 export type ServerMessage =
-  | { type: "welcome"; clientId: string }
+  | { type: "welcome"; clientId: string; joinToken?: string }
+  | { type: "joinToken"; joinToken: string }
   | { type: "state"; session: SerializedSession; serverMs: number }
   | { type: "presence"; members: PresenceMember[] }
   | { type: "pong"; t0: number; serverMs: number };

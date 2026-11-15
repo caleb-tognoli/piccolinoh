@@ -2,7 +2,7 @@ import type { AddressInfo } from "node:net";
 import type { FastifyInstance } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { WebSocket } from "ws";
-import { signJoinToken } from "../src/joinToken.js";
+import { signJoinToken, verifyJoinToken } from "../src/joinToken.js";
 import { applyControl } from "../src/watchtogether/control.js";
 import { startServer } from "../src/watchtogether/server.js";
 import type { Session } from "../src/watchtogether/session.js";
@@ -140,5 +140,37 @@ describe("state server protocol", () => {
     await new Promise((r) => ws.once("open", r));
     ws.send(JSON.stringify({ type: "hello", sessionId: session.id, joinToken: token }));
     expect((await presence).members).toEqual([{ id: expect.any(String), displayName: "Alice" }]);
+  });
+
+  it("compresses messages", async () => {
+    const { ws } = await join();
+    expect(ws.extensions).toContain("permessage-deflate");
+  });
+
+  it("lets a browser turn autoplay back on", async () => {
+    session.autoplay = false;
+    const { ws } = await join();
+    const turnedOn = next(ws, (m) => m.type === "state" && m.session.autoplay === true);
+    ws.send(JSON.stringify({ type: "control", action: { kind: "autoplayOn" } }));
+    await turnedOn;
+    expect(session.autoplay).toBe(true);
+  });
+
+  it("hands a named browser a fresh token on welcome, and a guest none", async () => {
+    const stale = signJoinToken({ sid: session.id, gid: session.guildId, dn: "Alice", exp: Date.now() + 1_000 });
+    const named = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+    const guest = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+    const namedWelcome = next(named, (m) => m.type === "welcome");
+    const guestWelcome = next(guest, (m) => m.type === "welcome");
+    await Promise.all([named, guest].map((ws) => new Promise((r) => ws.once("open", r))));
+    named.send(JSON.stringify({ type: "hello", sessionId: session.id, joinToken: stale }));
+    guest.send(JSON.stringify({ type: "hello", sessionId: session.id }));
+
+    const { joinToken } = await namedWelcome;
+    expect(joinToken).not.toBe(stale);
+    const payload = JSON.parse(Buffer.from(joinToken.split(".")[0], "base64url").toString("utf8"));
+    expect(payload.exp).toBeGreaterThan(Date.now() + 50 * 60_000);
+    expect(verifyJoinToken(joinToken, { sid: session.id, gid: session.guildId })).toBe("Alice");
+    expect((await guestWelcome).joinToken).toBeUndefined();
   });
 });

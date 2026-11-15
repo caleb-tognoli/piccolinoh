@@ -66,6 +66,7 @@ once most of the room has.
 | `/playnext <query>` | Queue videos at the front of the queue |
 | `/thisis <artist> [count]` | Queue an artist's newest and most popular songs |
 | `/pause`, `/resume`, `/skip` | Transport controls |
+| `/seek <time>` | Jump to `1:23` or `83`, or `+30` / `-10` from here |
 | `/np` | Bring the player to the bottom of this channel |
 | `/queue` | The queue, paged, with play-next / up / down / remove buttons per track (ephemeral) |
 | `/history` | Recently played, with a button to queue each again (ephemeral) |
@@ -85,7 +86,7 @@ shuffling, autoplay, the queue running out):
   quick repeats by the same person edit that line instead of adding one
   (`-# Caleb queued **A**, **B**`).
 
-Passing actions (pause/resume, skips, auto-skips of unembeddable videos,
+Passing actions (pause/resume, seeks, skips, auto-skips of unembeddable videos,
 moving, removing and restoring queue items) don't post anything: the player's
 footer shows the latest one for two minutes (`-# Caleb skipped **Song** · 1
 minute ago`), stacking quick repeats the same way. Their slash commands reply
@@ -99,7 +100,8 @@ The bot needs View Channel, Send Messages and Read Message History in the
 channels it's used in; without Send Messages the player is posted as a
 follow-up to each command instead.
 
-The site itself offers play/pause, skip, seek and removing queue items.
+The site itself offers play/pause, skip, seek and removing queue items, and its
+"Autoplay off" pill turns autoplay back on.
 
 ## Setup
 
@@ -121,7 +123,10 @@ hour. Switching back to global removes those server-only commands.
 docker compose up --build
 ```
 
-Serves the site, WebSocket and bot on port `3000`.
+Serves the site, WebSocket and bot on port `3000`. `/health` answers 503 while
+the Discord connection is down, which Compose shows as unhealthy. If Discord
+stays down for 5 minutes while no browser is connected, the process exits and
+`restart: unless-stopped` brings it back.
 
 ### Local development
 

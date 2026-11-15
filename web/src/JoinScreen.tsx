@@ -28,6 +28,13 @@ function parseHash(hash: string): { sessionId: string; joinToken?: string; name?
   return { sessionId, joinToken, name };
 }
 
+/** Swaps the link's token for a fresher one, so a reload keeps the name. Fires no hashchange. */
+function replaceHashToken(joinToken: string): void {
+  const [sessionId = "", ...params] = location.hash.slice(1).trim().split("&");
+  const rest = params.filter((p) => !p.startsWith("t="));
+  history.replaceState(history.state, "", `#${[sessionId, `t=${joinToken}`, ...rest].join("&")}`);
+}
+
 export function JoinScreen() {
   const [hash, setHash] = useState(location.hash);
   const { sessionId, joinToken, name } = parseHash(hash);
@@ -49,9 +56,17 @@ export function JoinScreen() {
     setJoining(true);
     joinError.value = null;
 
+    // The server keeps handing out fresh tokens; reconnects use the latest.
+    let token = joinToken;
+    const refresh = (fresh: string | undefined): void => {
+      if (!fresh) return;
+      token = fresh;
+      replaceHashToken(fresh);
+    };
+
     const client = connect(
       `${location.protocol.replace("http", "ws")}//${location.host}/ws`,
-      () => client.send({ type: "hello", sessionId, ...(joinToken ? { joinToken } : {}) }),
+      () => client.send({ type: "hello", sessionId, ...(token ? { joinToken: token } : {}) }),
       () => leave(EXPIRED_MESSAGE, false),
     );
     const timeout = window.setTimeout(() => {
@@ -66,7 +81,9 @@ export function JoinScreen() {
     });
     client.on("welcome", (msg) => {
       selfId.value = msg.clientId;
+      refresh(msg.joinToken);
     });
+    client.on("joinToken", (msg) => refresh(msg.joinToken));
     client.on("presence", (msg) => {
       presence.value = msg.members;
     });

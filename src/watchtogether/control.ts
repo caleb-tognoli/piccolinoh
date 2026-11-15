@@ -33,9 +33,11 @@ export interface ControlOptions {
   label?: string;
   /** Replaces the action the change would report. */
   note?: LastAction;
+  /** A deliberate repeat (/replay), so a duplicate isn't flagged. */
+  repeat?: boolean;
 }
 
-/** Applies `action`; returns what happened for the action log, or undefined for no-ops and seeks. */
+/** Applies `action`; returns what happened for the action log, or undefined for no-ops. */
 export function applyControl(
   session: Session,
   action: ControlAction,
@@ -71,6 +73,7 @@ export function applyControl(
       if (current.pausedAtPositionSec != null) current.pausedAtPositionSec = toSec;
       else current.startedAtServerMs = Date.now() - toSec * 1000;
       timelineChanged(session);
+      note = { kind: "seek", title: current.title, toSec, ...by };
       break;
     }
     case "enqueue": {
@@ -78,6 +81,21 @@ export function applyControl(
       if (tracks.length === 0) return;
       const startsNow = !current;
       const next = Boolean(action.next) && !startsNow;
+      // Flag double-adds (still adding them: repeats can be on purpose).
+      const queuedIndex = new Map(queue.map((t, i) => [t.videoId, i] as const).reverse());
+      const isQueued = (t: Track) => t.videoId === current?.videoId || queuedIndex.has(t.videoId);
+      const single = tracks.length === 1 ? tracks[0]! : undefined;
+      const twin: { alsoAt?: number | "now"; alreadyQueued?: number } = opts.repeat
+        ? {}
+        : single
+        ? single.videoId === current?.videoId
+          ? { alsoAt: "now" }
+          : queuedIndex.has(single.videoId)
+            ? { alsoAt: queuedIndex.get(single.videoId)! + (next ? 2 : 1) }
+            : {}
+        : tracks.some(isQueued)
+          ? { alreadyQueued: tracks.filter(isQueued).length }
+          : {};
       if (next) queue.unshift(...tracks);
       else queue.push(...tracks);
       note = {
@@ -86,6 +104,8 @@ export function applyControl(
         count: tracks.length,
         ...(startsNow ? {} : { position: next ? 1 : queue.length - tracks.length + 1 }),
         ...(next ? { next: true } : {}),
+        ...(tracks.length === 1 && tracks[0]!.startSec ? { fromSec: tracks[0]!.startSec } : {}),
+        ...twin,
         ...by,
       };
       if (startsNow) {
@@ -136,7 +156,7 @@ export function applyControl(
       break;
   }
   notifySessionChange(session);
-  if (!note) return undefined; // seeks aren't logged
+  if (!note) return undefined;
   note = opts.note ?? note;
   emitAction(session, note, opts.silent);
   return note;

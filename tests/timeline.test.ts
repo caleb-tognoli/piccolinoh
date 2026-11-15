@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createSession, onSessionChange } from "../src/watchtogether/session.js";
-import { advance, derivePosition, scheduleAdvance } from "../src/watchtogether/timeline.js";
+import { advance, derivePosition, HISTORY_CAP, scheduleAdvance } from "../src/watchtogether/timeline.js";
 import { track } from "./helpers.js";
 
 describe("derivePosition", () => {
@@ -41,6 +41,28 @@ describe("advance", () => {
     advance(session);
     expect(session.current).toBeUndefined();
     expect(session.history.map((h) => h.videoId)).toEqual(["a"]);
+  });
+
+  it("starts an entry at its link's time, once", () => {
+    const session = createSession("g");
+    session.queue.push({ ...track("a", 300), startSec: 90 });
+    const before = Date.now();
+    advance(session);
+    expect(derivePosition(session)).toBeGreaterThanOrEqual(90);
+    expect(session.current!.startedAtServerMs).toBeLessThanOrEqual(before - 90_000 + 50);
+    expect(session.current).not.toHaveProperty("startSec");
+    advance(session);
+    expect(session.history).toEqual([track("a", 300)]);
+  });
+
+  it("keeps only the newest HISTORY_CAP tracks in history", () => {
+    const session = createSession("g");
+    session.history = Array.from({ length: HISTORY_CAP }, (_, i) => track(`h${i}`));
+    session.current = { ...track("a"), startedAtServerMs: Date.now() };
+    advance(session);
+    expect(session.history).toHaveLength(HISTORY_CAP);
+    expect(session.history[0]?.videoId).toBe("h1");
+    expect(session.history.at(-1)?.videoId).toBe("a");
   });
 
   it("with startNext=false retires current and leaves the queue", () => {

@@ -67,6 +67,20 @@ group("formatting", () => {
     expect(describe({ kind: "enqueue", title: "Mix", count: 24, position: 2 })).toBe("queued 24 tracks from **Mix**");
     expect(describe({ kind: "enqueue", title: "", count: 3 })).toBe("queued 3 tracks");
     expect(describe({ kind: "clear", count: 1 })).toBe("cleared 1 track");
+    expect(describe({ kind: "enqueue", title: "Z", count: 1, position: 3, fromSec: 90 })).toBe("queued **Z** from 1:30 (#3)");
+    expect(describe({ kind: "enqueue", title: "Z", count: 1, position: 5, alsoAt: 2 })).toBe("queued **Z** (#5) · also at #2");
+    expect(describe({ kind: "enqueue", title: "Z", count: 1, position: 5, alsoAt: "now" })).toBe(
+      "queued **Z** (#5) · already playing",
+    );
+    expect(describe({ kind: "enqueue", title: "Mix", count: 24, alreadyQueued: 3 })).toBe(
+      "queued 24 tracks from **Mix** · incl. 3 already queued",
+    );
+    expect(describe({ kind: "enqueue", title: "Mix", count: 12, of: 14, dropped: "2 not found on YouTube" })).toBe(
+      "queued 12 of 14 tracks from **Mix** · 2 not found on YouTube",
+    );
+    expect(describe({ kind: "enqueue", title: "Z", count: 1, of: 2, dropped: "1 not found on YouTube" })).toBe(
+      "queued **Z** (1 of 2) · 1 not found on YouTube",
+    );
     expect(describe({ kind: "enqueue", title: "Z", count: 1, position: 1, next: true })).toBe("queued **Z** to play next");
     expect(describe({ kind: "enqueue", title: "Mix", count: 3, position: 1, next: true })).toBe(
       "queued 3 tracks from **Mix** to play next",

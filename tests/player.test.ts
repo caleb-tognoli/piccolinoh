@@ -259,6 +259,14 @@ describe("merge rules", () => {
     expect(isTransient({ kind: "reorder", title: "x", to: 1 })).toBe(true);
     expect(isTransient({ kind: "enqueue", title: "x", count: 1 })).toBe(false);
     expect(isTransient({ kind: "finished" })).toBe(false);
+    expect(isTransient({ kind: "seek", title: "x", toSec: 1 })).toBe(true);
+  });
+
+  it("collapses one person's seeks in a track into the latest spot", () => {
+    expect(mergeGroup({ kind: "seek", title: "x", toSec: 5, by: "B" })).toBe(
+      mergeGroup({ kind: "seek", title: "x", toSec: 10, by: "B" }),
+    );
+    expect(lineText({ kind: "seek", title: "x", toSec: 83, by: "Bob" }, [])).toBe("-# Bob jumped to 1:23 in **x**");
   });
 
   it("groups by kind, with reorders per track and playlists never", () => {

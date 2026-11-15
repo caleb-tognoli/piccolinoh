@@ -46,8 +46,18 @@ describe("parseYouTubeUrl", () => {
   it("recognizes single-video links", () => {
     expect(parseYouTubeUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ")).toEqual(video("dQw4w9WgXcQ"));
     expect(parseYouTubeUrl("https://music.youtube.com/watch?v=dQw4w9WgXcQ")).toEqual(video("dQw4w9WgXcQ"));
-    expect(parseYouTubeUrl("https://youtu.be/dQw4w9WgXcQ?t=42")).toEqual(video("dQw4w9WgXcQ"));
     expect(parseYouTubeUrl("https://www.youtube.com/shorts/dQw4w9WgXcQ")).toEqual(video("dQw4w9WgXcQ"));
+  });
+
+  it("reads a link's start time", () => {
+    const at = (startSec: number) => ({ kind: "video", id: "dQw4w9WgXcQ", startSec });
+    expect(parseYouTubeUrl("https://youtu.be/dQw4w9WgXcQ?t=42")).toEqual(at(42));
+    expect(parseYouTubeUrl("https://youtu.be/dQw4w9WgXcQ?si=x&t=1m30s")).toEqual(at(90));
+    expect(parseYouTubeUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=90s")).toEqual(at(90));
+    expect(parseYouTubeUrl("https://www.youtube.com/embed/x?start=5&v=dQw4w9WgXcQ")).toEqual(at(5));
+    expect(parseYouTubeUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ#t=2m")).toEqual(at(120));
+    expect(parseYouTubeUrl("https://youtu.be/dQw4w9WgXcQ?t=0")).toEqual(video("dQw4w9WgXcQ"));
+    expect(parseYouTubeUrl("https://youtu.be/dQw4w9WgXcQ?t=soon")).toEqual(video("dQw4w9WgXcQ"));
   });
 
   it("prefers the video when a watch link also has a list", () => {

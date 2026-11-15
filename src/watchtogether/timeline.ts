@@ -1,5 +1,8 @@
 import { emitAction, notifySessionChange, type Session } from "./session.js";
 
+/** Recently played tracks kept per session; the whole session is broadcast on every change. */
+export const HISTORY_CAP = 200;
+
 export function derivePosition(session: Session, serverNowMs = Date.now()): number {
   if (!session.current) return 0;
   if (session.current.pausedAtPositionSec != null) return session.current.pausedAtPositionSec;
@@ -9,11 +12,18 @@ export function derivePosition(session: Session, serverNowMs = Date.now()): numb
 /** Retires the current track to history and starts the queue head (unless `startNext` is false). */
 export function advance(session: Session, startNext = true): void {
   if (session.current) {
-    const { startedAtServerMs: _s, pausedAtPositionSec: _p, ...track } = session.current;
+    const { startedAtServerMs: _s, pausedAtPositionSec: _p, startSec: _o, ...track } = session.current;
     session.history.push(track);
+    if (session.history.length > HISTORY_CAP) session.history.splice(0, session.history.length - HISTORY_CAP);
   }
   const next = startNext ? session.queue.shift() : undefined;
-  session.current = next ? { ...next, startedAtServerMs: Date.now() } : undefined;
+  if (next) {
+    // A link's timestamp applies to this entry only; replays start from the top.
+    const { startSec = 0, ...track } = next;
+    session.current = { ...track, startedAtServerMs: Date.now() - startSec * 1000 };
+  } else {
+    session.current = undefined;
+  }
   session.errorTally.clear();
   session.epoch += 1;
 }

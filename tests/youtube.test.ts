@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { baseTitle, parsePlays } from "../src/bot/youtube.js";
+import { baseTitle, parsePlays, parseVideoCount } from "../src/bot/youtube.js";
 
 describe("parsePlays", () => {
   it("reads YouTube Music play counts", () => {
@@ -25,5 +25,15 @@ describe("baseTitle", () => {
 
   it("keeps a title that is only a bracket", () => {
     expect(baseTitle("(Intro)")).toBe("(intro)");
+  });
+});
+
+describe("parseVideoCount", () => {
+  it("reads a playlist's video count", () => {
+    expect(parseVideoCount("982 videos")).toBe(982);
+    expect(parseVideoCount("1,234 videos")).toBe(1234);
+    expect(parseVideoCount("1 video")).toBe(1);
+    expect(parseVideoCount(undefined)).toBeUndefined();
+    expect(parseVideoCount("No videos")).toBeUndefined();
   });
 });

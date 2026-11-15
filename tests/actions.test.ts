@@ -60,13 +60,35 @@ describe("actions", () => {
     expect(applyControl(session, { kind: "skip" })).toEqual({ kind: "start", title: "title c" });
   });
 
-  it("no-ops and seeks report nothing", () => {
+  it("flags a track that's already playing or queued, but still adds it", () => {
+    enqueue("a", "b", "c");
+    expect(enqueue("a")).toMatchObject({ alsoAt: "now", position: 3 });
+    expect(enqueue("c")).toMatchObject({ alsoAt: 2, position: 4 });
+    expect(
+      applyControl(session, { kind: "enqueue", tracks: [track("b")], next: true }, { by: "Caleb" }),
+    ).toMatchObject({ alsoAt: 2 }); // b moved from #1 to #2 when the new copy went first
+    expect(session.queue.map((t) => t.videoId)).toEqual(["b", "b", "c", "a", "c"]);
+    expect(enqueue("x", "b", "y", "a")).toMatchObject({ count: 4, alreadyQueued: 2 });
+    expect(enqueue("z")).not.toHaveProperty("alsoAt");
+    expect(applyControl(session, { kind: "enqueue", tracks: [track("a")] }, { repeat: true })).not.toHaveProperty("alsoAt");
+  });
+
+  it("no-ops report nothing", () => {
     expect(applyControl(session, { kind: "skip" })).toBeUndefined();
     enqueue("a");
     events = [];
-    expect(applyControl(session, { kind: "seek", toSec: 3 })).toBeUndefined();
     expect(applyControl(session, { kind: "play" })).toBeUndefined();
     expect(events).toEqual([]);
+  });
+
+  it("reports seeks with where they landed", () => {
+    enqueue("a");
+    expect(applyControl(session, { kind: "seek", toSec: 3 }, { by: "Bob" })).toEqual({
+      kind: "seek",
+      title: "title a",
+      toSec: 3,
+      by: "Bob",
+    });
   });
 
   it("reports reorder target as a 1-based position", () => {

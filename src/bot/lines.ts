@@ -13,7 +13,17 @@ const STACK_SHOWN = 4;
  * on the player's footer instead of posting a line; the rest change what's
  * coming up and stay in chat.
  */
-const TRANSIENT = new Set<LastAction["kind"]>(["play", "pause", "skip", "start", "autoSkip", "reorder", "remove", "restore"]);
+const TRANSIENT = new Set<LastAction["kind"]>([
+  "play",
+  "pause",
+  "skip",
+  "start",
+  "autoSkip",
+  "seek",
+  "reorder",
+  "remove",
+  "restore",
+]);
 
 export function isTransient(action: LastAction): boolean {
   return TRANSIENT.has(action.kind);
@@ -42,6 +52,8 @@ export function mergeGroup(action: LastAction): string | undefined {
       return action.count === 1 && !action.next ? "enqueue" : undefined;
     case "reorder":
       return `reorder:${action.title}`; // the line shows the latest position
+    case "seek":
+      return `seek:${action.title}`; // arrow-key taps collapse into the latest spot
     default:
       return undefined;
   }

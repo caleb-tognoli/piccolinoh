@@ -52,17 +52,24 @@ export function Transport({ class: className }: { class?: string }) {
   );
 }
 
-/** Read-only: autoplay is switched with /autoplay in Discord. On is the norm, so only "off" is shown. */
+/**
+ * Shown only while autoplay is off (on is the norm); clicking turns it back on
+ * for the room. Turning it off stays a deliberate /autoplay in Discord.
+ */
 export function AutoplayStatus() {
   if (session.value?.autoplay ?? true) return null;
   return (
-    <span
-      class="inline-flex min-w-0 items-center gap-1.5 rounded-full bg-warning/15 px-2.5 py-1 text-xs font-medium text-warning"
-      title="The room stops after this video. Turn autoplay back on with /autoplay in Discord."
+    <button
+      type="button"
+      disabled={!connected.value}
+      onClick={() => sendControl({ kind: "autoplayOn" })}
+      class="group inline-flex min-w-0 cursor-pointer items-center gap-1.5 rounded-full bg-warning/15 px-2.5 py-1 text-xs font-medium text-warning transition-colors hover:bg-warning/25 focus-visible:outline-2 focus-visible:outline-warning disabled:cursor-default disabled:opacity-60"
+      title="The room stops after this video. Click to turn autoplay back on."
     >
-      <SquareStop class="size-3.5 shrink-0" />
+      <SquareStop class="size-3.5 shrink-0 group-hover:hidden group-focus-visible:hidden" />
+      <Play class="hidden size-3.5 shrink-0 group-hover:block group-focus-visible:block" fill="currentColor" />
       <span class="truncate">Autoplay off</span>
-    </span>
+    </button>
   );
 }
 

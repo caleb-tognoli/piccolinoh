@@ -4,7 +4,8 @@ import { config } from "../config.js";
 
 const TOKEN_URL = "https://accounts.spotify.com/api/token";
 const API_BASE = "https://api.spotify.com/v1";
-const ALBUM_TRACK_CAP = 50;
+/** Each track costs a YouTube search, so huge compilations stop here. */
+export const ALBUM_TRACK_CAP = 500;
 const SPOTIFY_ID = "[A-Za-z0-9]{22}";
 
 export interface SpotifyRef {
@@ -87,12 +88,27 @@ export async function getTrack(id: string): Promise<SpotifyTrack | null> {
   return res?.id ? toTrack(res) : null;
 }
 
-export async function getAlbum(id: string): Promise<{ name: string; tracks: SpotifyTrack[] } | null> {
-  const res = await api<{ name: string; tracks?: { items: (TrackApi | null)[] } }>(`/albums/${id}`);
+interface TrackPage {
+  items: (TrackApi | null)[];
+  next?: string | null;
+  total?: number;
+}
+
+/** An album's tracks, up to ALBUM_TRACK_CAP, and how many it has in all. */
+export async function getAlbum(id: string): Promise<{ name: string; tracks: SpotifyTrack[]; total: number } | null> {
+  const res = await api<{ name: string; tracks?: TrackPage }>(`/albums/${id}`);
   if (!res?.name || !res.tracks?.items) return null;
-  const tracks = res.tracks.items
+  const items = [...res.tracks.items];
+  // The album only embeds its first 50 tracks; the rest come 50 at a time.
+  let page: TrackPage | null = res.tracks;
+  while (page?.next && items.length < ALBUM_TRACK_CAP) {
+    page = await api<TrackPage>(`/albums/${id}/tracks?offset=${items.length}&limit=50`);
+    if (!page?.items.length) break;
+    items.push(...page.items);
+  }
+  const tracks = items
     .filter((t): t is TrackApi => !!t?.id && !t.is_local)
     .slice(0, ALBUM_TRACK_CAP)
     .map(toTrack);
-  return { name: res.name, tracks };
+  return { name: res.name, tracks, total: Math.max(res.tracks.total ?? 0, tracks.length) };
 }

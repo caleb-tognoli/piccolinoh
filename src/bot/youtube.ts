@@ -4,7 +4,10 @@ import { Innertube, YTNodes, type Helpers } from "youtubei.js";
 import { logger } from "../logger.js";
 import type { Track } from "../watchtogether/session.js";
 
-const PLAYLIST_CAP = 200;
+/** YouTube's own playlist limit; stops a continuation loop, never a real playlist. */
+const PLAYLIST_MAX = 5000;
+/** How much of an artist's song lists /thisis reads. */
+const ARTIST_LIST_CAP = 200;
 
 let client: Promise<Innertube> | null = null;
 
@@ -69,16 +72,29 @@ export function searchSongs(query: string, limit = 5): Promise<Track[]> {
   });
 }
 
-export function getPlaylist(listId: string): Promise<{ name: string; tracks: Track[] }> {
+/** "1,234 videos" → 1234; undefined when there's no number. */
+export function parseVideoCount(label: string | undefined): number | undefined {
+  const digits = label?.replace(/\D/g, "");
+  return digits ? Number(digits) : undefined;
+}
+
+/**
+ * A playlist's playable videos, and how many of its videos can't be played.
+ * YouTube hides private and deleted videos from the pages, so that count comes
+ * from the playlist's own video count; live videos are skipped here too.
+ * (Mixes, "RD…" lists, are refused by youtubei.js as unviewable.)
+ */
+export function getPlaylist(listId: string): Promise<{ name: string; tracks: Track[]; unavailable: number }> {
   return withClient(async (yt) => {
     let page = await yt.getPlaylist(listId);
     const name = page.info.title ?? "Playlist";
-    const out = tracks(page.items, PLAYLIST_CAP);
-    while (out.length < PLAYLIST_CAP && page.has_continuation) {
+    const listed = parseVideoCount(page.info.total_items);
+    const out = tracks(page.items, PLAYLIST_MAX);
+    while (out.length < PLAYLIST_MAX && page.has_continuation) {
       page = await page.getContinuation();
-      out.push(...tracks(page.items, PLAYLIST_CAP - out.length));
+      out.push(...tracks(page.items, PLAYLIST_MAX - out.length));
     }
-    return { name, tracks: out };
+    return { name, tracks: out, unavailable: Math.max(0, (listed ?? out.length) - out.length) };
   });
 }
 
@@ -118,7 +134,7 @@ async function releaseTracks(yt: Innertube, albumId: string, artist: string): Pr
     .sort((a, b) => b.plays - a.plays); // stable: unknown plays keep the album order
   const own = tracks(
     ranked.map((r) => r.node),
-    PLAYLIST_CAP,
+    ARTIST_LIST_CAP,
   ).filter((t) => !t.author || t.author.toLowerCase().includes(artist.toLowerCase()));
   // A single padded with "(Acoustic Version)" / "(Sped Up)" variants should add one song, not three.
   const seen = new Set<string>();
@@ -154,7 +170,7 @@ export function getArtistCatalog(query: string): Promise<ArtistCatalog | null> {
     if (shelf?.is(YTNodes.MusicShelf)) {
       const full = await shelf.endpoint!.call(yt.actions, { client: "YTMUSIC", parse: true });
       const list = full.contents_memo?.getType(YTNodes.MusicPlaylistShelf)?.[0]?.contents ?? shelf.contents;
-      topSongs = tracks(list, PLAYLIST_CAP).map((t) => withAuthor(t, name));
+      topSongs = tracks(list, ARTIST_LIST_CAP).map((t) => withAuthor(t, name));
     }
 
     const minYear = new Date().getFullYear() - 1;

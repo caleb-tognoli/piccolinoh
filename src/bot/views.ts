@@ -56,7 +56,8 @@ function thumbnail(videoId: string): string {
 }
 
 function trackLine(track: Track): string {
-  return `**${esc(track.title)}** — ${esc(track.author)} · ${formatDuration(track.durationSec)}`;
+  const from = track.startSec ? ` · from ${formatDuration(track.startSec)}` : "";
+  return `**${esc(track.title)}** — ${esc(track.author)} · ${formatDuration(track.durationSec)}${from}`;
 }
 
 function text(content: string): TextDisplayBuilder {
@@ -91,13 +92,21 @@ export function describe(action: LastAction): string {
     case "finished":
       return "queue finished";
     case "enqueue": {
-      if (action.count > 1) {
-        const from = action.title ? ` from **${esc(action.title)}**` : "";
-        return `queued ${action.count} tracks${from}${action.next ? " to play next" : ""}`;
+      const notes = [
+        action.dropped,
+        action.alsoAt === "now" ? "already playing" : action.alsoAt ? `also at #${action.alsoAt}` : undefined,
+        action.alreadyQueued ? `incl. ${action.alreadyQueued} already queued` : undefined,
+      ].filter(Boolean);
+      const dropped = notes.length > 0 ? ` · ${notes.join(" · ")}` : "";
+      if (action.count > 1 || action.of) {
+        const from = action.title && action.count > 1 ? ` from **${esc(action.title)}**` : "";
+        const what = action.count > 1 ? `${action.count}${action.of ? ` of ${action.of}` : ""} tracks${from}` : `**${esc(action.title)}** (1 of ${action.of})`;
+        return `queued ${what}${action.next ? " to play next" : ""}${dropped}`;
       }
-      if (action.next) return `queued **${esc(action.title)}** to play next`;
+      const from = action.fromSec ? ` from ${formatDuration(action.fromSec)}` : "";
+      if (action.next) return `queued **${esc(action.title)}**${from} to play next${dropped}`;
       const at = action.position ? ` (#${action.position})` : "";
-      return `queued **${esc(action.title)}**${at}`;
+      return `queued **${esc(action.title)}**${from}${at}${dropped}`;
     }
     case "remove":
       return `removed **${esc(action.title)}**`;
@@ -105,6 +114,8 @@ export function describe(action: LastAction): string {
       return `restored **${esc(action.title)}**`;
     case "reorder":
       return `moved **${esc(action.title)}** to #${action.to}`;
+    case "seek":
+      return `jumped to ${formatDuration(action.toSec)} in **${esc(action.title)}**`;
     case "clear":
       return `cleared ${action.count} track${action.count === 1 ? "" : "s"}`;
     case "shuffle":

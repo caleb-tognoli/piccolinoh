@@ -99,6 +99,15 @@ describe("resolveInput", () => {
     expect(await resolveInput("https://youtu.be/dQw4w9WgXcQ")).toMatchObject({ ok: false });
   });
 
+  it("starts a video link at its timestamp, unless that's past the end", async () => {
+    youtube.getVideo.mockResolvedValue({ track: track("dQw4w9WgXcQ", 200), embeddable: true });
+    expect(await resolveInput("https://youtu.be/dQw4w9WgXcQ?t=1m30s")).toEqual({
+      ok: true,
+      tracks: [{ ...track("dQw4w9WgXcQ", 200), startSec: 90 }],
+    });
+    expect(await resolveInput("https://youtu.be/dQw4w9WgXcQ?t=300")).toEqual({ ok: true, tracks: [track("dQw4w9WgXcQ", 200)] });
+  });
+
   it("falls back to search when the video lookup fails", async () => {
     youtube.getVideo.mockRejectedValue(new Error("Sign in to confirm you're not a bot"));
     youtube.searchVideos.mockResolvedValue([track("other"), track("dQw4w9WgXcQ")]);
@@ -107,9 +116,17 @@ describe("resolveInput", () => {
   });
 
   it("queues a playlist link", async () => {
-    youtube.getPlaylist.mockResolvedValue({ name: "Mix", tracks: [track("a"), track("b")] });
+    youtube.getPlaylist.mockResolvedValue({ name: "Mix", tracks: [track("a"), track("b")], unavailable: 0 });
     const result = await resolveInput("https://www.youtube.com/playlist?list=PL123");
     expect(result).toEqual({ ok: true, tracks: [track("a"), track("b")], playlistName: "Mix" });
+  });
+
+  it("says how many playlist videos can't be played", async () => {
+    youtube.getPlaylist.mockResolvedValue({ name: "Mix", tracks: [track("a"), track("b")], unavailable: 3 });
+    expect(await resolveInput("https://www.youtube.com/playlist?list=PL123")).toMatchObject({
+      total: 5,
+      dropped: "3 unavailable",
+    });
   });
 
   it("rejects links from other sites", async () => {
@@ -145,6 +162,26 @@ describe("resolveInput", () => {
       youtube.searchSongs.mockRejectedValue(new Error("boom"));
       youtube.searchVideos.mockResolvedValue([track("video", 230)]);
       expect(await resolveInput(link)).toMatchObject({ ok: true, tracks: [{ videoId: "video" }] });
+    });
+
+    it("says which album tracks didn't make it", async () => {
+      spotify.getAlbum.mockResolvedValue({
+        name: "Album",
+        total: 620,
+        tracks: [
+          { title: "Found", artist: "A", durationSec: 200 },
+          { title: "Missing", artist: "A", durationSec: 200 },
+        ],
+      });
+      youtube.searchSongs.mockImplementation(async (q) => (q.includes("Found") ? [track("found", 200)] : []));
+      youtube.searchVideos.mockResolvedValue([]);
+      expect(await resolveInput("https://open.spotify.com/album/4iV5W9uYEdYUVa79Axb7Rh")).toEqual({
+        ok: true,
+        tracks: [{ videoId: "found", title: "Found", author: "A", durationSec: 200 }],
+        playlistName: "Album",
+        total: 620,
+        dropped: "1 not found on YouTube, albums stop at 500",
+      });
     });
 
     it("rejects playlists", async () => {

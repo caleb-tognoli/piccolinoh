@@ -1,8 +1,16 @@
 // Turns /play input (YouTube link, Spotify link, or search text) into playable
 // YouTube tracks.
 import { logger } from "../logger.js";
+import { parseTime } from "./time.js";
 import type { Track } from "../watchtogether/session.js";
-import { getAlbum, getTrack, parseSpotifyUrl, spotifyEnabled, type SpotifyTrack } from "./spotify.js";
+import {
+  ALBUM_TRACK_CAP,
+  getAlbum,
+  getTrack,
+  parseSpotifyUrl,
+  spotifyEnabled,
+  type SpotifyTrack,
+} from "./spotify.js";
 import { getArtistCatalog, getPlaylist, getVideo, isEmbeddable, searchSongs, searchVideos } from "./youtube.js";
 
 const VIDEO_ID_RE = /^[\w-]{11}$/;
@@ -13,12 +21,28 @@ const EMBED_CANDIDATES = 3;
 const DURATION_TOLERANCE_SEC = 5;
 
 export type ResolveResult =
-  | { ok: true; tracks: Track[]; playlistName?: string }
+  | {
+      ok: true;
+      tracks: Track[];
+      playlistName?: string;
+      /** How many tracks the source had, when some didn't make it. */
+      total?: number;
+      /** Why they didn't: "2 not found on YouTube". */
+      dropped?: string;
+    }
   | { ok: false; message: string };
 
 const fail = (message: string): ResolveResult => ({ ok: false, message });
 
-export type YouTubeRef = { kind: "video"; id: string } | { kind: "playlist"; id: string };
+export type YouTubeRef = { kind: "video"; id: string; startSec?: number } | { kind: "playlist"; id: string };
+
+/** A link's start time: `t=90`, `t=1m30s` or `start=90`, in the query or the fragment. */
+function linkStart(url: URL): number | undefined {
+  const fragment = new URLSearchParams(url.hash.slice(1));
+  const raw = url.searchParams.get("t") ?? url.searchParams.get("start") ?? fragment.get("t");
+  const sec = raw ? parseTime(raw) : null;
+  return sec ? Math.floor(sec) : undefined;
+}
 
 /**
  * Recognizes YouTube links. A watch link that also carries `&list=` is treated
@@ -38,7 +62,10 @@ export function parseYouTubeUrl(input: string): YouTubeRef | null {
   else if (host === "youtube.com") videoId = url.searchParams.get("v") ?? (parts[0] === "shorts" ? parts[1] : null);
   else return null;
 
-  if (videoId && VIDEO_ID_RE.test(videoId)) return { kind: "video", id: videoId };
+  if (videoId && VIDEO_ID_RE.test(videoId)) {
+    const startSec = linkStart(url);
+    return { kind: "video", id: videoId, ...(startSec ? { startSec } : {}) };
+  }
   const listId = url.searchParams.get("list");
   return listId ? { kind: "playlist", id: listId } : null;
 }
@@ -69,6 +96,13 @@ async function mapConcurrent<T, R>(items: T[], limit: number, fn: (item: T) => P
   };
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
   return out;
+}
+
+/** Starts a single resolved video at `startSec`, unless that's past its end. */
+function startAt(result: ResolveResult, startSec: number | undefined): ResolveResult {
+  const [track] = result.ok ? result.tracks : [];
+  if (!result.ok || !track || !startSec || startSec >= track.durationSec) return result;
+  return { ...result, tracks: [{ ...track, startSec }] };
 }
 
 async function resolveVideo(videoId: string): Promise<ResolveResult> {
@@ -120,7 +154,7 @@ async function resolveSpotify(input: string): Promise<ResolveResult> {
 
   const source =
     ref.kind === "track"
-      ? await getTrack(ref.id).then((t) => (t ? { name: undefined, tracks: [t] } : null))
+      ? await getTrack(ref.id).then((t) => (t ? { name: undefined, tracks: [t], total: 1 } : null))
       : await getAlbum(ref.id);
   if (!source) return fail("No results.");
 
@@ -131,7 +165,18 @@ async function resolveSpotify(input: string): Promise<ResolveResult> {
     }),
   );
   const tracks = translated.filter((t): t is Track => t !== null);
-  return tracks.length > 0 ? { ok: true, tracks, playlistName: source.name } : fail("No results.");
+  if (tracks.length === 0) return fail("No results.");
+  const notFound = source.tracks.length - tracks.length;
+  const reasons = [
+    notFound > 0 ? `${notFound} not found on YouTube` : "",
+    source.total > source.tracks.length ? `albums stop at ${ALBUM_TRACK_CAP}` : "",
+  ].filter(Boolean);
+  return {
+    ok: true,
+    tracks,
+    ...(source.name ? { playlistName: source.name } : {}),
+    ...(reasons.length > 0 ? { total: source.total, dropped: reasons.join(", ") } : {}),
+  };
 }
 
 /** Same song across uploads/versions: "Opalite" and "OPALITE" match, "Opalite (Live)" doesn't. */
@@ -176,10 +221,16 @@ export async function resolveInput(input: string): Promise<ResolveResult> {
       return await resolveSpotify(query);
     }
     const youtube = parseYouTubeUrl(query);
-    if (youtube?.kind === "video") return await resolveVideo(youtube.id);
+    if (youtube?.kind === "video") return startAt(await resolveVideo(youtube.id), youtube.startSec);
     if (youtube?.kind === "playlist") {
-      const { name, tracks } = await getPlaylist(youtube.id);
-      return tracks.length > 0 ? { ok: true, tracks, playlistName: name } : fail("That playlist has no playable videos.");
+      const { name, tracks, unavailable } = await getPlaylist(youtube.id);
+      if (tracks.length === 0) return fail("That playlist has no playable videos.");
+      return {
+        ok: true,
+        tracks,
+        playlistName: name,
+        ...(unavailable > 0 ? { total: tracks.length + unavailable, dropped: `${unavailable} unavailable` } : {}),
+      };
     }
     if (/^https?:\/\//.test(query)) return fail("Only YouTube and Spotify links are supported.");
     return await resolveSearch(query);

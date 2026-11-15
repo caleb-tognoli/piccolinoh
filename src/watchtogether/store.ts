@@ -17,6 +17,13 @@ export function getOrCreateSessionForGuild(guildId: string): Session {
   return session;
 }
 
+/** Browsers connected across every session. */
+export function connectedBrowsers(): number {
+  let count = 0;
+  for (const session of sessionsById.values()) count += session.clients.size;
+  return count;
+}
+
 /** Test helper: drops every session, stopping timers and closing sockets. */
 export function resetStore(): void {
   for (const session of sessionsById.values()) {

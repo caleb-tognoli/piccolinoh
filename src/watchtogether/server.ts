@@ -3,6 +3,7 @@ import path from "node:path";
 import fastifyStatic from "@fastify/static";
 import websocket from "@fastify/websocket";
 import Fastify, { type FastifyInstance } from "fastify";
+import { healthStatus } from "../health.js";
 import { logger } from "../logger.js";
 import { attachSocket } from "./ws.js";
 
@@ -11,8 +12,14 @@ const WEB_DIST = path.resolve(process.cwd(), "web/dist");
 export async function startServer(port: number): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
 
-  await app.register(websocket);
-  app.get("/health", async () => ({ ok: true }));
+  // The whole session goes out on every change, and a long queue is very
+  // repetitive JSON: compressed it shrinks several times over.
+  await app.register(websocket, { options: { perMessageDeflate: true } });
+  // 503 while the Discord connection is down, so Docker shows the container as unhealthy.
+  app.get("/health", async (_req, reply) => {
+    const status = healthStatus();
+    return reply.code(status.ok ? 200 : 503).send(status);
+  });
   app.get("/ws", { websocket: true }, (socket) => attachSocket(socket));
 
   if (existsSync(path.join(WEB_DIST, "index.html"))) {

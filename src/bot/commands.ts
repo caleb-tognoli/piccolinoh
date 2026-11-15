@@ -8,10 +8,21 @@ import { config } from "../config.js";
 import { signJoinToken } from "../joinToken.js";
 import { applyControl, type ControlOptions, setAutoplay } from "../watchtogether/control.js";
 import type { LastAction, Session } from "../watchtogether/session.js";
+import { derivePosition } from "../watchtogether/timeline.js";
 import { isTransient } from "./lines.js";
 import { adoptPlayer, livePlayer, postPlayer } from "./player.js";
 import { type ResolveResult, resolveArtist, resolveInput } from "./resolver.js";
-import { capitalize, describe, historyView, joinView, logLine, playerView, queueView } from "./views.js";
+import { parseSeek } from "./time.js";
+import {
+  capitalize,
+  describe,
+  formatDuration,
+  historyView,
+  joinView,
+  logLine,
+  playerView,
+  queueView,
+} from "./views.js";
 
 type Interaction = ChatInputCommandInteraction<"cached">;
 
@@ -52,6 +63,14 @@ export function pause(session: Session, opts: ControlOptions): Outcome {
 export function resume(session: Session, opts: ControlOptions): Outcome {
   if (session.current?.pausedAtPositionSec == null) return "Nothing to resume.";
   return applyControl(session, { kind: "play" }, opts)!;
+}
+
+export function seek(session: Session, input: string, opts: ControlOptions): Outcome {
+  if (!session.current) return "Nothing playing to seek in.";
+  const toSec = parseSeek(input, derivePosition(session));
+  if (toSec === null) return "Use a time like `1:23`, `83`, `+30` or `-10`.";
+  if (toSec > session.current.durationSec) return `That's past the end (${formatDuration(session.current.durationSec)}).`;
+  return applyControl(session, { kind: "seek", toSec }, opts)!;
 }
 
 export function skip(session: Session, opts: ControlOptions): Outcome {
@@ -137,11 +156,13 @@ async function enqueue(
     await interaction.deleteReply().catch(() => {});
     return interaction.followUp(ephemeral(result.message));
   }
-  const action = applyControl(
+  const queued = applyControl(
     session,
     { kind: "enqueue", tracks: result.tracks, next },
     { by: by(interaction), silent: true, ...(result.playlistName ? { label: result.playlistName } : {}) },
   )!;
+  // Say what didn't make it: "queued 12 of 14 tracks from X · 2 not found on YouTube".
+  const action = result.dropped ? { ...queued, of: result.total, dropped: result.dropped } : queued;
   return playerBelow(interaction, session, interaction.editReply(lineReply(action)));
 }
 
@@ -198,6 +219,13 @@ export const commands: Command[] = [
     execute: (interaction, session) => act(interaction, session, (opts) => skip(session, opts)),
   },
   {
+    data: slash("seek", "Jump to a time in the current video").addStringOption((o) =>
+      o.setName("time").setDescription("e.g. 1:23, 83, +30 or -10").setRequired(true),
+    ),
+    execute: (interaction, session) =>
+      act(interaction, session, (opts) => seek(session, interaction.options.getString("time", true), opts)),
+  },
+  {
     data: slash("np", "Move the player to the bottom of this channel"),
     execute: (interaction, session) => showPlayer(interaction, session),
   },
@@ -216,7 +244,7 @@ export const commands: Command[] = [
       act(interaction, session, (opts) => {
         if (!session.current) return "Nothing playing to replay.";
         const { startedAtServerMs: _s, pausedAtPositionSec: _p, ...track } = session.current;
-        return applyControl(session, { kind: "enqueue", tracks: [track] }, opts)!;
+        return applyControl(session, { kind: "enqueue", tracks: [track] }, { ...opts, repeat: true })!;
       }),
   },
   {

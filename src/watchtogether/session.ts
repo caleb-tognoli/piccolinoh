@@ -6,6 +6,8 @@ export interface Track {
   title: string;
   author: string;
   durationSec: number;
+  /** Where this queue entry starts playing (a link's ?t=); dropped once it plays. */
+  startSec?: number;
 }
 
 export interface CurrentTrack extends Track {
@@ -39,9 +41,10 @@ export type LastAction = { by?: string } & (
   | { kind: "start"; title: string }
   | { kind: "autoSkip"; title: string }
   | { kind: "finished" }
-  | { kind: "enqueue"; /** Track title, or the playlist name ("" if unnamed) when count > 1. */ title: string; count: number; /** 1-based queue slot; absent when it started right away. */ position?: number; /** Queued at the front with /playnext. */ next?: true }
+  | { kind: "enqueue"; /** Track title, or the playlist name ("" if unnamed) when count > 1. */ title: string; count: number; /** 1-based queue slot; absent when it started right away. */ position?: number; /** Queued at the front with /playnext. */ next?: true; /** Tracks the source had, when some didn't make it. */ of?: number; /** Why: "2 not found on YouTube". */ dropped?: string; /** Starts here (a link's ?t=). */ fromSec?: number; /** The same video is already playing or at this 1-based slot. */ alsoAt?: number | "now"; /** How many of a playlist's tracks were already playing or queued. */ alreadyQueued?: number }
   | { kind: "remove" | "restore"; title: string }
   | { kind: "reorder"; title: string; to: number }
+  | { kind: "seek"; title: string; toSec: number }
   | { kind: "clear" | "shuffle"; count: number }
   | { kind: "autoplay"; enabled: boolean }
 );

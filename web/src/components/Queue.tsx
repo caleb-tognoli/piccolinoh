@@ -15,6 +15,8 @@ const GAP_PX = 2;
 /** Within this distance of the list's top or bottom edge, a drag scrolls the list. */
 const EDGE_PX = 48;
 const MAX_SCROLL_PX_PER_FRAME = 12;
+/** Rows rendered before "Show all": a whole imported playlist would make every update slow. */
+export const QUEUE_WINDOW = 200;
 
 function removeTrack(index: number, title: string, videoId: string): void {
   sendControl({ kind: "remove", index });
@@ -191,6 +193,9 @@ export function Queue() {
   const totalSec = queue.reduce((sum, t) => sum + t.durationSec, 0);
   const { listRef, drag, shown, handleProps } = useQueueDrag(queue);
   const canReorder = connected.value && shown.length > 1;
+  const [showAll, setShowAll] = useState(false);
+  const visible = showAll ? shown : shown.slice(0, QUEUE_WINDOW);
+  const hidden = shown.length - visible.length;
 
   return (
     <Panel title="Queue" count={queue.length} meta={queue.length > 0 ? `${formatSec(totalSec)} total` : undefined}>
@@ -206,7 +211,7 @@ export function Queue() {
             drag && "select-none",
           )}
         >
-          {shown.map((track, index) => {
+          {visible.map((track, index) => {
             const dragging = drag?.from === index;
             const offset = drag ? (dragging ? drag.offsetY : shiftFor(drag, index)) : 0;
             return (
@@ -246,7 +251,10 @@ export function Queue() {
                   <p class="line-clamp-2 text-sm leading-snug font-medium" title={track.title}>
                     {track.title}
                   </p>
-                  <p class="truncate text-xs text-muted">{track.author}</p>
+                  <p class="flex gap-1 text-xs text-muted">
+                    <span class="truncate">{track.author}</span>
+                    {track.startSec ? <span class="shrink-0">· from {formatSec(track.startSec)}</span> : null}
+                  </p>
                 </div>
                 <Button
                   variant="ghost"
@@ -264,6 +272,11 @@ export function Queue() {
             );
           })}
         </ol>
+      )}
+      {hidden > 0 && (
+        <Button variant="ghost" size="sm" class="mt-2 w-full" onClick={() => setShowAll(true)}>
+          Show all {shown.length.toLocaleString()} ({hidden.toLocaleString()} more)
+        </Button>
       )}
     </Panel>
   );
