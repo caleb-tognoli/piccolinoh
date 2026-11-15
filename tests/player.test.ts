@@ -1,7 +1,9 @@
 import type { Message, SendableChannels } from "discord.js";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
-import { lineText, mergeGroup, startActionLog } from "../src/bot/log.js";
+import { isTransient, lineText, mergeGroup } from "../src/bot/lines.js";
+import { startActionLog } from "../src/bot/log.js";
 import { BURIED_AFTER, adoptPlayer, followLogLine, livePlayer, postPlayer } from "../src/bot/player.js";
+import { hasRecent, noteRecent, RECENT_SHOWN_MS, recentLine } from "../src/bot/recent.js";
 import { applyControl } from "../src/watchtogether/control.js";
 import { createSession, type Session } from "../src/watchtogether/session.js";
 import { track } from "./helpers.js";
@@ -165,56 +167,100 @@ describe("action log", () => {
     applyControl(session, { kind: "enqueue", tracks: ["a", "b", "c", "d"].map((id) => track(id)) }, { silent: true });
     await postPlayer(asChannel(channel), session);
   }
+  const queue = (id: string, by?: string) =>
+    applyControl(session, { kind: "enqueue", tracks: [track(id)] }, by ? { by } : {});
 
   it("posts a line above the player and moves the player below it", async () => {
     await withPlayer();
-    applyControl(session, { kind: "pause" }, { by: "Bob" });
+    queue("e", "Bob");
     await flush();
-    expect(transcript(channel)).toEqual(["-# Bob paused", "[player]"]);
+    expect(transcript(channel)).toEqual(["-# Bob queued **title e** (#4)", "[player]"]);
   });
 
   it("skips silent actions and logs nothing without a player", async () => {
-    applyControl(session, { kind: "enqueue", tracks: [track("a")] }, { by: "Bob" });
+    queue("a", "Bob");
     await flush();
     expect(channel.send).not.toHaveBeenCalled();
 
     await postPlayer(asChannel(channel), session);
-    applyControl(session, { kind: "pause" }, { by: "Bob", silent: true });
+    applyControl(session, { kind: "enqueue", tracks: [track("b")] }, { by: "Bob", silent: true });
     await flush();
     expect(transcript(channel)).toEqual(["[player]"]);
   });
 
+  it("shows passing actions on the player's footer instead of posting", async () => {
+    await withPlayer();
+    const player = channel.sent[0]!;
+    applyControl(session, { kind: "pause" }, { by: "Bob" });
+    applyControl(session, { kind: "skip" }, { by: "Ana", silent: true });
+    applyControl(session, { kind: "reorder", from: 1, to: 0 }, { by: "Ana" });
+    await flush();
+    expect(transcript(channel)).toEqual(["[player]"]);
+    expect(player.edit).toHaveBeenCalled();
+    expect(recentLine(session.guildId)).toMatch(/^-# Ana moved \*\*title d\*\* to #1 · <t:\d+:R>$/);
+  });
+
   it("merges the same person's repeats into the line above the player", async () => {
     await withPlayer();
-    applyControl(session, { kind: "remove", index: 0 }, { by: "Bob" });
-    applyControl(session, { kind: "remove", index: 0 }, { by: "Bob" });
+    queue("e", "Bob");
+    queue("f", "Bob");
     await flush();
-    applyControl(session, { kind: "pause" }, { by: "Bob" });
-    applyControl(session, { kind: "play" }, { by: "Bob" });
+    applyControl(session, { kind: "clear" }, { by: "Bob" });
     await flush();
-    expect(transcript(channel)).toEqual(["-# Bob removed **title b**, **title c**", "-# Bob resumed", "[player]"]);
+    expect(transcript(channel)).toEqual(["-# Bob queued **title e**, **title f**", "-# Bob cleared 5 tracks", "[player]"]);
   });
 
   it("starts a new line for another person or once chat came in between", async () => {
     await withPlayer();
-    applyControl(session, { kind: "pause" }, { by: "Bob" });
+    queue("e", "Bob");
     await flush();
-    applyControl(session, { kind: "play" }, { by: "Ana" });
+    queue("f", "Ana");
     await flush();
-    expect(transcript(channel)).toEqual(["-# Bob paused", "-# Ana resumed", "[player]"]);
+    await channel.send({ content: "hi" });
+    queue("g", "Ana");
+    await flush();
+    expect(transcript(channel)).toEqual([
+      "-# Bob queued **title e** (#4)",
+      "-# Ana queued **title f** (#5)",
+      "hi",
+      "-# Ana queued **title g** (#6)",
+      "[player]",
+    ]);
   });
 
   it("anonymous and automatic actions never merge", async () => {
     await withPlayer();
-    applyControl(session, { kind: "pause" });
+    queue("e");
     await flush();
-    applyControl(session, { kind: "play" });
+    queue("f");
     await flush();
-    expect(transcript(channel)).toEqual(["-# Paused", "-# Resumed", "[player]"]);
+    expect(transcript(channel)).toEqual(["-# Queued **title e** (#4)", "-# Queued **title f** (#5)", "[player]"]);
+  });
+});
+
+describe("player footer", () => {
+  it("stacks the same person's repeats and expires", () => {
+    const guildId = `g${++guild}`;
+    noteRecent(guildId, { kind: "remove", title: "a", by: "Bob" }, 1_000_000);
+    noteRecent(guildId, { kind: "remove", title: "b", by: "Bob" }, 1_010_000);
+    expect(recentLine(guildId, 1_010_000)).toBe("-# Bob removed **a**, **b** · <t:1010:R>");
+
+    noteRecent(guildId, { kind: "pause", by: "Ana" }, 1_020_000);
+    expect(recentLine(guildId, 1_020_000)).toBe("-# Ana paused · <t:1020:R>");
+    expect(hasRecent(guildId)).toBe(true);
+    expect(recentLine(guildId, 1_020_000 + RECENT_SHOWN_MS)).toBeUndefined();
+    expect(hasRecent(guildId)).toBe(false);
   });
 });
 
 describe("merge rules", () => {
+  it("keeps queue changes in chat and leaves passing actions to the footer", () => {
+    expect(isTransient({ kind: "skip", title: "x" })).toBe(true);
+    expect(isTransient({ kind: "reorder", title: "x", to: 1 })).toBe(true);
+    expect(isTransient({ kind: "enqueue", title: "x", count: 1 })).toBe(false);
+    expect(isTransient({ kind: "finished" })).toBe(false);
+  });
+
   it("groups by kind, with reorders per track and playlists never", () => {
     expect(mergeGroup({ kind: "pause", by: "B" })).toBe(mergeGroup({ kind: "play", by: "B" }));
     expect(mergeGroup({ kind: "reorder", title: "x", to: 1, by: "B" })).not.toBe(

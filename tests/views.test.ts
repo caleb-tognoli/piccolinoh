@@ -122,6 +122,17 @@ group("playerView", () => {
     ]);
   });
 
+  it("shows the footer line in every state", () => {
+    const footer = "-# Bob skipped **A** · <t:1:R>";
+    expect(texts(playerView(playing("n1"), Date.now(), footer))).toContain(footer);
+    const stopped = createSession("g");
+    stopped.queue = [track("n1")];
+    expect(texts(playerView(stopped, Date.now(), footer))).toContain(footer);
+    expect(texts(playerView(createSession("g"), Date.now(), footer))).toBe(
+      `Nothing playing · \`/play\` to queue something\n${footer}`,
+    );
+  });
+
   it("collapses to an idle line", () => {
     const view = playerView(createSession("g"));
     expect(texts(view)).toBe("Nothing playing · `/play` to queue something");

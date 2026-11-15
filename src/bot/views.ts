@@ -114,7 +114,7 @@ export function describe(action: LastAction): string {
   }
 }
 
-function capitalize(text: string): string {
+export function capitalize(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
@@ -143,8 +143,11 @@ function upNext(queue: Track[]): string {
 const joinButton = () => button(`${ID.player}:join`, "🔗 Join");
 const queueButton = () => button(`${ID.player}:queue`, "📋 Queue");
 
-/** The live player: what's playing and how far in, a peek at the queue, and controls. */
-export function playerView(session: Session, nowMs = Date.now()): V2Message {
+/**
+ * The live player: what's playing and how far in, a peek at the queue, and
+ * controls. `recent` is the footer line naming the latest passing action.
+ */
+export function playerView(session: Session, nowMs = Date.now(), recent?: string): V2Message {
   const { current, queue, autoplay } = session;
   const container = new ContainerBuilder();
 
@@ -166,6 +169,7 @@ export function playerView(session: Session, nowMs = Date.now()): V2Message {
     );
     const details = [progressBar(derivePosition(session, nowMs), current.durationSec), upNext(queue)];
     if (!autoplay) details.push("-# Autoplay off · stops after this track");
+    if (recent) details.push(recent);
     container.addTextDisplayComponents(text(details.join("\n")));
     container.addActionRowComponents(
       row(
@@ -185,6 +189,7 @@ export function playerView(session: Session, nowMs = Date.now()): V2Message {
     // Autoplay stopped after a track; the queue is waiting.
     const lines = ["-# ⏹ Stopped", upNext(queue)];
     if (!autoplay) lines.push("-# Autoplay off");
+    if (recent) lines.push(recent);
     container.addTextDisplayComponents(text(lines.join("\n")));
     container.addActionRowComponents(
       row(button(`${ID.player}:skip`, "▶ Play next", ButtonStyle.Primary), queueButton(), joinButton()),
@@ -192,7 +197,9 @@ export function playerView(session: Session, nowMs = Date.now()): V2Message {
     return v2(container);
   }
 
-  container.addTextDisplayComponents(text("Nothing playing · `/play` to queue something"));
+  container.addTextDisplayComponents(
+    text(["Nothing playing · `/play` to queue something", ...(recent ? [recent] : [])].join("\n")),
+  );
   container.addActionRowComponents(row(joinButton()));
   return v2(container);
 }

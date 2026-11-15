@@ -76,15 +76,20 @@ once most of the room has.
 The bot keeps one **player** message per server, always at the bottom of its
 channel: what's playing with a progress bar (refreshed every 10 s), the next
 track, and Pause/Resume, Skip, Queue and Join buttons. Above it runs the
-**action log**, one small line per change:
+**action log**, one small line per change worth keeping (queueing, clearing,
+shuffling, autoplay, the queue running out):
 
 - a command's reply is its line (`-# Queued **Song** (#3)`, under Discord's
   "Caleb used /play"); errors are only shown to whoever ran it;
-- button clicks and site actions post `-# Caleb skipped **Song**`, and quick
-  repeats by the same person edit that line instead of adding one
-  (`-# Caleb removed **A**, **B**`);
-- auto-skips of unembeddable videos and the queue running out are logged;
-  ordinary track changes only update the player.
+- button clicks and site actions post `-# Caleb queued **Song** (#3)`, and
+  quick repeats by the same person edit that line instead of adding one
+  (`-# Caleb queued **A**, **B**`).
+
+Passing actions (pause/resume, skips, auto-skips of unembeddable videos,
+moving, removing and restoring queue items) don't post anything: the player's
+footer shows the latest one for two minutes (`-# Caleb skipped **Song** · 1
+minute ago`), stacking quick repeats the same way. Their slash commands reply
+only to whoever ran them. Ordinary track changes only update the player.
 
 After each new line the player re-posts below it, and it also re-posts once 5
 other messages have buried it. `/np` moves it down by hand. When nothing is

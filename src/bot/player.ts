@@ -1,12 +1,14 @@
 // The live player: one message per guild, kept below the action log.
 // It moves to the bottom after each new log line and after commands that show
 // it, re-posts itself once other messages have buried it, and otherwise is
-// edited in place (session changes, and a progress tick while playing).
+// edited in place (session changes, and a tick that moves the progress bar
+// along and clears the footer once it expires).
 // All work for a guild runs one job at a time, and jobs queued in the same
 // tick coalesce, so a change plus its re-post is one post.
 import type { Message, SendableChannels } from "discord.js";
 import { logger } from "../logger.js";
 import { onSessionChange, type Session } from "../watchtogether/session.js";
+import { hasRecent, recentLine } from "./recent.js";
 import { playerView } from "./views.js";
 
 /** Newer messages after the player before an automatic update re-posts it. */
@@ -38,7 +40,7 @@ const pending = new Map<string, Job>();
 const running = new Set<string>();
 
 function render(session: Session) {
-  const view = playerView(session);
+  const view = playerView(session, Date.now(), recentLine(session.guildId));
   return { view, key: JSON.stringify(view.components.map((c) => c.toJSON())) };
 }
 
@@ -137,10 +139,11 @@ onSessionChange((session) => {
   if (live.has(session.guildId)) void schedule(session, "auto");
 });
 
-// Moves the progress bar along. Edits only, so ticks never re-post.
+// Moves the progress bar along and clears an expired footer. Edits only, so ticks never re-post.
 setInterval(() => {
   for (const { session } of live.values()) {
-    if (session.current && session.current.pausedAtPositionSec == null) void schedule(session, "edit");
+    const playing = session.current && session.current.pausedAtPositionSec == null;
+    if (playing || hasRecent(session.guildId)) void schedule(session, "edit");
   }
 }, TICK_MS).unref();
 

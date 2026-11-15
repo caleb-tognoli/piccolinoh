@@ -1,20 +1,18 @@
 // Button clicks on the player and on the private /queue and /history views.
 // Clicks answer privately or by updating their own message; what they change
-// reaches the channel through the action log.
+// reaches the channel through the action log or the player's footer.
 import type { ButtonInteraction } from "discord.js";
 import { applyControl, type ControlAction } from "../watchtogether/control.js";
 import type { LastAction, Session } from "../watchtogether/session.js";
 import { ephemeral, joinReply, type Outcome, pause, queueReply, resume, skip } from "./commands.js";
 import { adoptPlayer, livePlayer } from "./player.js";
-import { describe, historyView, ID, type QueueOp, queueView, stalePlayerView } from "./views.js";
+import { capitalize, describe, historyView, ID, type QueueOp, queueView, stalePlayerView } from "./views.js";
 
 type Click = ButtonInteraction<"cached">;
 
 /** Feedback line for a private view: "Moved **X** to #1". */
 function notice(action: LastAction | undefined): string | undefined {
-  if (!action) return undefined;
-  const phrase = describe(action);
-  return phrase.charAt(0).toUpperCase() + phrase.slice(1);
+  return action ? capitalize(describe(action)) : undefined;
 }
 
 async function onPlayer(click: Click, session: Session, op: string): Promise<unknown> {
