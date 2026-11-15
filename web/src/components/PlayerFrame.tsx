@@ -4,6 +4,7 @@ import { fullscreen, STAGE_ID, toggleFullscreen, wsClient } from "../store";
 import { cn } from "../ui/cn";
 import { EmptyStage } from "./EmptyStage";
 import { Toast } from "./Toast";
+import { UpNext } from "./UpNext";
 
 const PLAYER_ID = "yt-player";
 
@@ -39,6 +40,7 @@ export function PlayerFrame({ theater }: { theater?: boolean }) {
     >
       <div id={PLAYER_ID} ref={containerRef}></div>
       <EmptyStage />
+      <UpNext />
       {fullscreen.value && <Toast />}
     </div>
   );

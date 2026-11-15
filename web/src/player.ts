@@ -5,7 +5,13 @@ import { hideToast, lagging, muted, session, showToast, volume } from "./store";
 
 const IFRAME_API_URL = "https://www.youtube.com/iframe_api";
 const SYNC_INTERVAL_MS = 2000;
-const DEAD_ZONE_SEC = 2.0;
+/** Further off than this, jump straight to the room's position. */
+const SEEK_THRESHOLD_SEC = 2.0;
+/** Closer than SEEK_THRESHOLD_SEC but further than this, drift back by playing a little fast or slow. */
+const NUDGE_START_SEC = 0.3;
+const NUDGE_STOP_SEC = 0.1;
+const NUDGE_RATE_DELTA = 0.05;
+const NUDGE_CHECK_MS = 250;
 const RECONCILE_GRACE_MS = 1000;
 const STALL_THRESHOLD_MS = 5000;
 const RECONCILE_TOAST_MS = 4000;
@@ -45,6 +51,11 @@ export async function attachPlayer(containerId: string, ws: WSClient): Promise<(
   let lastActualTime = 0;
   let lastActualUpdateAt = performance.now();
   let reconcileTimer: number | null = null;
+  /** 0 at normal speed, else +1 / -1 while playing fast / slow to close a small drift. */
+  let nudge: 0 | 1 | -1 = 0;
+  let nudgeTimer: number | null = null;
+  /** Some videos only offer YouTube's 0.25 steps; then small drift is left alone, as before. */
+  let canNudge = true;
 
   const readyPromise = new Promise<void>((resolveReady) => {
     player = new window.YT!.Player(containerId, {
@@ -82,6 +93,8 @@ export async function attachPlayer(containerId: string, ws: WSClient): Promise<(
     if (videoId !== lastVideoId) {
       lastVideoId = videoId;
       lastPaused = paused;
+      stopNudge();
+      canNudge = true;
       if (videoId) {
         player.loadVideoById({ videoId, startSeconds: derivedPosition(s) });
       } else {
@@ -94,6 +107,7 @@ export async function attachPlayer(containerId: string, ws: WSClient): Promise<(
 
     if (paused !== lastPaused) {
       lastPaused = paused;
+      stopNudge();
       if (paused) {
         player.pauseVideo();
       } else {
@@ -110,9 +124,60 @@ export async function attachPlayer(containerId: string, ws: WSClient): Promise<(
     if (!epochBumped) return;
     const expected = derivedPosition(s);
     const actual = player.getCurrentTime();
-    if (Math.abs(expected - actual) > DEAD_ZONE_SEC) {
+    if (Math.abs(expected - actual) > SEEK_THRESHOLD_SEC) {
+      stopNudge();
       player.seekTo(expected, true);
     }
+  }
+
+  function stopNudge(): void {
+    if (nudgeTimer != null) {
+      window.clearTimeout(nudgeTimer);
+      nudgeTimer = null;
+    }
+    if (nudge === 0) return;
+    nudge = 0;
+    player?.setPlaybackRate(1);
+  }
+
+  /**
+   * Brings a playing video back to the room's position: a seek for big gaps, otherwise a
+   * few seconds at 0.95x or 1.05x (YouTube keeps the pitch), which is smoother than a jump.
+   */
+  function correctDrift(): void {
+    if (!player) return;
+    const s = session.value;
+    if (!s?.current || player.getPlayerState() !== PLAYING || lagging.value) {
+      stopNudge();
+      return;
+    }
+    if (nudge !== 0 && player.getPlaybackRate() === 1) {
+      // The player rounded our rate back to 1x: this video can't be nudged.
+      canNudge = false;
+      nudge = 0;
+    }
+    const drift = player.getCurrentTime() - derivedPosition(s); // > 0: ahead of the room
+    const off = Math.abs(drift);
+    if (off > SEEK_THRESHOLD_SEC) {
+      stopNudge();
+      player.seekTo(derivedPosition(s), true);
+      return;
+    }
+    const direction = drift > 0 ? -1 : 1;
+    if (nudge === 0) {
+      if (off <= NUDGE_START_SEC || !canNudge) return;
+      nudge = direction;
+      player.setPlaybackRate(1 + direction * NUDGE_RATE_DELTA);
+    } else if (off <= NUDGE_STOP_SEC || direction !== nudge) {
+      stopNudge();
+      return;
+    }
+    // Check often while nudging so we stop on target instead of overshooting.
+    if (nudgeTimer != null) window.clearTimeout(nudgeTimer);
+    nudgeTimer = window.setTimeout(() => {
+      nudgeTimer = null;
+      correctDrift();
+    }, NUDGE_CHECK_MS);
   }
 
   function onStateChange(state: number): void {
@@ -138,6 +203,7 @@ export async function attachPlayer(containerId: string, ws: WSClient): Promise<(
       reconcileTimer = null;
       const cur = session.value?.current;
       if (!cur || !player) return;
+      stopNudge();
       player.seekTo(derivedPosition(session.value), true);
       if (cur.pausedAtPositionSec == null) player.playVideo();
       else player.pauseVideo();
@@ -185,7 +251,7 @@ export async function attachPlayer(containerId: string, ws: WSClient): Promise<(
         lagging.value = false;
         hideToast(CATCHING_UP_TOAST);
         const expected = derivedPosition(s);
-        if (Math.abs(expected - actual) > DEAD_ZONE_SEC) {
+        if (Math.abs(expected - actual) > SEEK_THRESHOLD_SEC) {
           player.seekTo(expected, true);
         }
       }
@@ -194,20 +260,18 @@ export async function attachPlayer(containerId: string, ws: WSClient): Promise<(
         lagging.value = true;
         showToast(CATCHING_UP_TOAST);
       }
+      stopNudge();
       return;
     }
 
-    if (state !== PLAYING || lagging.value) return;
-
-    const expected = derivedPosition(s);
-    if (Math.abs(expected - actual) > DEAD_ZONE_SEC) {
-      player.seekTo(expected, true);
-    }
+    // While nudging, correctDrift is already checking on its own faster timer.
+    if (nudgeTimer == null) correctDrift();
   }, SYNC_INTERVAL_MS);
 
   return () => {
     window.clearInterval(syncTimer);
     if (reconcileTimer != null) window.clearTimeout(reconcileTimer);
+    if (nudgeTimer != null) window.clearTimeout(nudgeTimer);
     unsubSession();
     unsubVolume();
     player?.destroy();

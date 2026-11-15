@@ -28,6 +28,9 @@ declare namespace YT {
     loadVideoById(options: { videoId: string; startSeconds?: number }): void;
     getCurrentTime(): number;
     getPlayerState(): number;
+    /** A suggestion: the player may round it, so read back getPlaybackRate(). */
+    setPlaybackRate(rate: number): void;
+    getPlaybackRate(): number;
     getIframe(): HTMLIFrameElement;
     setVolume(volume: number): void;
     mute(): void;
