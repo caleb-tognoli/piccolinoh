@@ -254,6 +254,7 @@ export function Queue() {
                   <p class="flex gap-1 text-xs text-muted">
                     <span class="truncate">{track.author}</span>
                     {track.startSec ? <span class="shrink-0">· from {formatSec(track.startSec)}</span> : null}
+                    {track.addedBy ? <span class="max-w-[45%] shrink-0 truncate">· {track.addedBy.name}</span> : null}
                   </p>
                 </div>
                 <Button

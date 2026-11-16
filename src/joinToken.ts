@@ -1,5 +1,6 @@
 // Signed tokens embedded in /join links. They carry the user's Discord display
-// name to the web client; the server checks the signature before trusting it.
+// name and user id to the web client; the server checks the signature before
+// trusting them.
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { config } from "./config.js";
 
@@ -9,6 +10,8 @@ interface Payload {
   sid: string;
   gid: string;
   dn: string;
+  /** Discord user id. Links handed out before it existed have none. */
+  uid?: string;
   exp: number;
 }
 
@@ -22,8 +25,13 @@ export function signJoinToken(input: Omit<Payload, "exp"> & { exp?: number }): s
   return `${payloadB64}.${sign(payloadB64).toString("base64url")}`;
 }
 
-/** Returns the display name if the token is authentic, unexpired and for this session. */
-export function verifyJoinToken(token: string, expected: { sid: string; gid: string }): string | null {
+export interface JoinIdentity {
+  name: string;
+  userId?: string;
+}
+
+/** Returns who the token names if it is authentic, unexpired and for this session. */
+export function verifyJoinToken(token: string, expected: { sid: string; gid: string }): JoinIdentity | null {
   const [payloadB64, sigB64, ...rest] = token.split(".");
   if (!payloadB64 || !sigB64 || rest.length > 0) return null;
 
@@ -41,5 +49,6 @@ export function verifyJoinToken(token: string, expected: { sid: string; gid: str
   }
   if (typeof payload.exp !== "number" || payload.exp < Date.now()) return null;
   if (payload.sid !== expected.sid || payload.gid !== expected.gid) return null;
-  return typeof payload.dn === "string" ? payload.dn : null;
+  if (typeof payload.dn !== "string") return null;
+  return typeof payload.uid === "string" ? { name: payload.dn, userId: payload.uid } : { name: payload.dn };
 }

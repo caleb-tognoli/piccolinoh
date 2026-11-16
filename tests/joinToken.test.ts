@@ -12,7 +12,11 @@ function flipFirstChar(s: string): string {
 
 describe("joinToken", () => {
   it("verifies a freshly signed token and returns the display name", () => {
-    expect(verifyJoinToken(signJoinToken(base), expected)).toBe("Alice ✨");
+    expect(verifyJoinToken(signJoinToken(base), expected)).toEqual({ name: "Alice ✨" });
+  });
+
+  it("returns the user id when the token carries one", () => {
+    expect(verifyJoinToken(signJoinToken({ ...base, uid: "111" }), expected)).toEqual({ name: "Alice ✨", userId: "111" });
   });
 
   it("rejects a tampered payload or signature", () => {

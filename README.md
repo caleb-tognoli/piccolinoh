@@ -28,7 +28,22 @@ Everything runs in one Node process (`src/main.ts`).
 - `web/` — the site (Vite + Preact).
 - `tests/` — Vitest suites.
 
-Sessions live in memory: restarting the process clears queues.
+Each server has one room, kept in a SQLite file (`src/db.ts`,
+`src/watchtogether/store.ts`, Node's built-in `node:sqlite`) at
+`$DATA_DIR/piccolinoh.db`. A room's id never changes, so `/join` links keep
+working across restarts, and its queue, history and autoplay setting come back
+with it; whatever was playing comes back paused where it was. Changes are
+written about a second after they happen and everything is saved on shutdown.
+Removing the bot from a server deletes that server's room and its play log.
+
+The same file keeps a **play log** for stats (`src/watchtogether/plays.ts`):
+one row per track that played in a room, with who added it, how long it
+actually played (paused time doesn't count), how it ended (finished, skipped,
+auto-skipped, or interrupted by a crash) and who skipped it, plus which named
+people had the room open while it played. People are recorded by Discord user
+id, which `/join` links now carry; anonymous guests aren't recorded.
+`/privacy count_me:False` leaves someone out of a server's log from then on and
+erases what was already recorded about them there.
 
 ## Finding videos
 
@@ -73,6 +88,9 @@ once most of the room has.
 | `/remove <position>`, `/move <from> <to>`, `/shuffle`, `/clear` | Edit the queue |
 | `/replay` | Queue the current video again |
 | `/autoplay <enabled>` | When off, playback stops after each video |
+| `/privacy <count_me>` | Whether your listening and picks count in this server's stats (ephemeral) |
+
+Queued tracks show who added them, in Discord and on the site.
 
 The bot keeps one **player** message per server, always at the bottom of its
 channel: what's playing with a progress bar (refreshed every 10 s), the next
@@ -105,7 +123,7 @@ The site itself offers play/pause, skip, seek and removing queue items, and its
 
 ## Setup
 
-Requires Node.js 22+ and a Discord application with a bot user (Docker optional).
+Requires Node.js 22.13+ (for `node:sqlite`) and a Discord application with a bot user (Docker optional).
 
 ```bash
 corepack pnpm install
@@ -126,7 +144,8 @@ docker compose up --build
 Serves the site, WebSocket and bot on port `3000`. `/health` answers 503 while
 the Discord connection is down, which Compose shows as unhealthy. If Discord
 stays down for 5 minutes while no browser is connected, the process exits and
-`restart: unless-stopped` brings it back.
+`restart: unless-stopped` brings it back. Rooms are kept in `./data` on the
+host, mounted at `/app/data`.
 
 ### Local development
 

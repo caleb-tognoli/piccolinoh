@@ -23,7 +23,10 @@ export function NowPlaying() {
           >
             {current.title}
           </h1>
-          <p class="truncate text-sm text-muted">{current.author}</p>
+          <p class="truncate text-sm text-muted">
+            {current.author}
+            {current.addedBy ? ` · added by ${current.addedBy.name}` : ""}
+          </p>
         </div>
         <div class="col-span-full @3xl:row-start-1">
           <Progress track={current} />

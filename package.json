@@ -5,7 +5,7 @@
   "description": "A YouTube watch-together website controlled by a Discord bot.",
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.13"
   },
   "packageManager": "pnpm@9.15.0",
   "scripts": {

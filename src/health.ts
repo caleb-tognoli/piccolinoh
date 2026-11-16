@@ -1,7 +1,7 @@
 // Whether the process is healthy, and a watchdog that restarts it when the
-// Discord connection is gone for good. Sessions live in memory, so the
-// watchdog only exits while no browser is watching: a room keeps working
-// without Discord, and killing it would end everyone's video.
+// Discord connection is gone for good. Rooms are saved on exit, but the
+// watchdog still only exits while no browser is watching: a room keeps working
+// without Discord, and a restart would pause everyone's video.
 import { logger } from "./logger.js";
 import { connectedBrowsers } from "./watchtogether/store.js";
 

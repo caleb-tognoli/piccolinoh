@@ -7,7 +7,8 @@ import {
 import { config } from "../config.js";
 import { signJoinToken } from "../joinToken.js";
 import { applyControl, type ControlOptions, setAutoplay } from "../watchtogether/control.js";
-import type { LastAction, Session } from "../watchtogether/session.js";
+import { isStatsOptedOut, setStatsOptOut } from "../watchtogether/plays.js";
+import type { LastAction, Person, Session } from "../watchtogether/session.js";
 import { derivePosition } from "../watchtogether/timeline.js";
 import { isTransient } from "./lines.js";
 import { adoptPlayer, livePlayer, postPlayer } from "./player.js";
@@ -37,8 +38,8 @@ export function ephemeral(content: string) {
   return { content, flags: MessageFlags.Ephemeral } as const;
 }
 
-export function joinReply(session: Session, name: string) {
-  const token = signJoinToken({ sid: session.id, gid: session.guildId, dn: name });
+export function joinReply(session: Session, { userId, name }: Person) {
+  const token = signJoinToken({ sid: session.id, gid: session.guildId, dn: name, uid: userId });
   const url = `${config.PUBLIC_BASE_URL.replace(/\/$/, "")}/#${session.id}&t=${token}`;
   return { ...joinView(url, name), flags: MessageFlags.Ephemeral } as const;
 }
@@ -105,7 +106,15 @@ function lineReply(action: LastAction) {
   return { content: logLine(describe(action)), allowedMentions: noPings };
 }
 
-const by = (interaction: Interaction) => interaction.member.displayName;
+/** Whoever clicked or ran a command, as a Person. */
+export function person(interaction: { member: { displayName: string }; user: { id: string } }): Person {
+  return { userId: interaction.user.id, name: interaction.member.displayName };
+}
+
+/** Control options naming whoever did it: their name for the log, their id for the play log. */
+export function who(interaction: { member: { displayName: string }; user: { id: string } }): ControlOptions {
+  return { by: interaction.member.displayName, userId: interaction.user.id };
+}
 
 /**
  * Runs a change; replies with its error privately, or with its log line
@@ -113,7 +122,7 @@ const by = (interaction: Interaction) => interaction.member.displayName;
  * their reply is private and the player stays put.
  */
 function act(interaction: Interaction, session: Session, change: (opts: ControlOptions) => Outcome) {
-  const outcome = change({ by: by(interaction), silent: true });
+  const outcome = change({ ...who(interaction), silent: true });
   if (typeof outcome === "string") return interaction.reply(ephemeral(outcome));
   if (!isTransient(outcome)) return playerBelow(interaction, session, interaction.reply(lineReply(outcome)));
   const reply = interaction.reply(ephemeral(capitalize(describe(outcome))));
@@ -159,7 +168,7 @@ async function enqueue(
   const queued = applyControl(
     session,
     { kind: "enqueue", tracks: result.tracks, next },
-    { by: by(interaction), silent: true, ...(result.playlistName ? { label: result.playlistName } : {}) },
+    { ...who(interaction), silent: true, ...(result.playlistName ? { label: result.playlistName } : {}) },
   )!;
   // Say what didn't make it: "queued 12 of 14 tracks from X · 2 not found on YouTube".
   const action = result.dropped ? { ...queued, of: result.total, dropped: result.dropped } : queued;
@@ -169,7 +178,7 @@ async function enqueue(
 export const commands: Command[] = [
   {
     data: slash("join", "Get your personal link to this server's watch session"),
-    execute: (interaction, session) => interaction.reply(joinReply(session, by(interaction))),
+    execute: (interaction, session) => interaction.reply(joinReply(session, person(interaction))),
   },
   {
     data: slash("play", "Queue a YouTube or Spotify link, or search YouTube").addStringOption((o) =>
@@ -304,5 +313,26 @@ export const commands: Command[] = [
         if (session.autoplay === enabled) return `Autoplay is already ${enabled ? "on" : "off"}.`;
         return setAutoplay(session, enabled, opts)!;
       }),
+  },
+  {
+    data: slash("privacy", "Choose whether your listening and picks count in this server's stats").addBooleanOption(
+      (o) => o.setName("count_me").setDescription("Count me in stats").setRequired(true),
+    ),
+    execute: (interaction) => {
+      const countMe = interaction.options.getBoolean("count_me", true);
+      const { guildId } = interaction;
+      const userId = interaction.user.id;
+      if (countMe === !isStatsOptedOut(guildId, userId)) {
+        return interaction.reply(ephemeral(countMe ? "You're already counted in stats." : "You're already left out of stats."));
+      }
+      setStatsOptOut(guildId, userId, !countMe);
+      return interaction.reply(
+        ephemeral(
+          countMe
+            ? "What you play and listen to here counts in this server's stats again, from now on."
+            : "What you play and listen to here no longer counts in this server's stats, and what was recorded about you here is deleted. Run `/privacy count_me:True` to be counted again.",
+        ),
+      );
+    },
   },
 ];

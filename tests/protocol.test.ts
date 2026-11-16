@@ -133,8 +133,8 @@ describe("state server protocol", () => {
     expect((await presence).members.map((m: { id: string }) => m.id)).toEqual([clientId]);
   });
 
-  it("shows the display name from a valid join token in presence", async () => {
-    const token = signJoinToken({ sid: session.id, gid: session.guildId, dn: "Alice" });
+  it("shows the display name from a valid join token in presence, but never the user id", async () => {
+    const token = signJoinToken({ sid: session.id, gid: session.guildId, dn: "Alice", uid: "111" });
     const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
     const presence = next(ws, (m) => m.type === "presence");
     await new Promise((r) => ws.once("open", r));
@@ -157,7 +157,7 @@ describe("state server protocol", () => {
   });
 
   it("hands a named browser a fresh token on welcome, and a guest none", async () => {
-    const stale = signJoinToken({ sid: session.id, gid: session.guildId, dn: "Alice", exp: Date.now() + 1_000 });
+    const stale = signJoinToken({ sid: session.id, gid: session.guildId, dn: "Alice", uid: "111", exp: Date.now() + 1_000 });
     const named = new WebSocket(`ws://127.0.0.1:${port}/ws`);
     const guest = new WebSocket(`ws://127.0.0.1:${port}/ws`);
     const namedWelcome = next(named, (m) => m.type === "welcome");
@@ -170,7 +170,7 @@ describe("state server protocol", () => {
     expect(joinToken).not.toBe(stale);
     const payload = JSON.parse(Buffer.from(joinToken.split(".")[0], "base64url").toString("utf8"));
     expect(payload.exp).toBeGreaterThan(Date.now() + 50 * 60_000);
-    expect(verifyJoinToken(joinToken, { sid: session.id, gid: session.guildId })).toBe("Alice");
+    expect(verifyJoinToken(joinToken, { sid: session.id, gid: session.guildId })).toEqual({ name: "Alice", userId: "111" });
     expect((await guestWelcome).joinToken).toBeUndefined();
   });
 });

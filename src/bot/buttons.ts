@@ -4,7 +4,7 @@
 import type { ButtonInteraction } from "discord.js";
 import { applyControl, type ControlAction } from "../watchtogether/control.js";
 import type { LastAction, Session } from "../watchtogether/session.js";
-import { ephemeral, joinReply, type Outcome, pause, queueReply, resume, skip } from "./commands.js";
+import { ephemeral, joinReply, type Outcome, pause, person, queueReply, resume, skip, who } from "./commands.js";
 import { adoptPlayer, livePlayer } from "./player.js";
 import { capitalize, describe, historyView, ID, type QueueOp, queueView, stalePlayerView } from "./views.js";
 
@@ -16,8 +16,7 @@ function notice(action: LastAction | undefined): string | undefined {
 }
 
 async function onPlayer(click: Click, session: Session, op: string): Promise<unknown> {
-  const name = click.member.displayName;
-  if (op === "join") return click.reply(joinReply(session, name));
+  if (op === "join") return click.reply(joinReply(session, person(click)));
   if (op === "queue") return click.reply(queueReply(session));
 
   const live = livePlayer(click.guildId);
@@ -27,9 +26,9 @@ async function onPlayer(click: Click, session: Session, op: string): Promise<unk
 
   let outcome: Outcome;
   if (op === "toggle") {
-    outcome = session.current?.pausedAtPositionSec != null ? resume(session, { by: name }) : pause(session, { by: name });
+    outcome = session.current?.pausedAtPositionSec != null ? resume(session, who(click)) : pause(session, who(click));
   } else if (op === "skip") {
-    outcome = skip(session, { by: name });
+    outcome = skip(session, who(click));
   } else {
     return undefined;
   }
@@ -63,7 +62,7 @@ function onQueue(click: Click, session: Session, op: string, args: string[]): Pr
   if (session.queue[index]?.videoId !== args[2] || target < 0 || target >= session.queue.length) {
     return click.update(queueView(session, page, "Queue changed — refreshed"));
   }
-  const done = applyControl(session, action, { by: click.member.displayName });
+  const done = applyControl(session, action, who(click));
   return click.update(queueView(session, page, notice(done)));
 }
 
@@ -76,7 +75,7 @@ function onHistory(click: Click, session: Session, op: string, args: string[]): 
   if (!track || track.videoId !== args[2]) {
     return click.update(historyView(session, page, "History changed — refreshed"));
   }
-  const done = applyControl(session, { kind: "enqueue", tracks: [track] }, { by: click.member.displayName });
+  const done = applyControl(session, { kind: "enqueue", tracks: [track] }, who(click));
   return click.update(historyView(session, page, notice(done)));
 }
 

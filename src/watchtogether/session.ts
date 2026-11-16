@@ -8,6 +8,14 @@ export interface Track {
   durationSec: number;
   /** Where this queue entry starts playing (a link's ?t=); dropped once it plays. */
   startSec?: number;
+  /** Who queued it (always someone in Discord: browsers can't add tracks). */
+  addedBy?: Person;
+}
+
+/** A Discord member: their user id and the display name they had then. */
+export interface Person {
+  userId: string;
+  name: string;
 }
 
 export interface CurrentTrack extends Track {
@@ -57,9 +65,10 @@ export interface RemovedTrack {
 
 export type SerializedSession = Omit<Session, "advanceTimer" | "clients" | "errorTally" | "recentlyRemoved">;
 
-export function createSession(guildId: string): Session {
+/** `id` is a saved room's id when restoring one; new rooms get a random, unguessable id. */
+export function createSession(guildId: string, id = randomBytes(9).toString("base64url")): Session {
   return {
-    id: randomBytes(9).toString("base64url"),
+    id,
     guildId,
     epoch: 0,
     queue: [],
@@ -99,4 +108,31 @@ export function onAction(fn: ActionListener): () => void {
 
 export function emitAction(session: Session, action: LastAction, silent = false): void {
   for (const fn of actionListeners) fn(session, action, silent);
+}
+
+/** How a track stopped being the current one. */
+export type TrackEnd =
+  | { how: "finished" }
+  | { how: "skipped"; /** Discord user id, when a named person skipped. */ byUserId?: string }
+  | { how: "autoSkipped" };
+
+/**
+ * The current track changed: `ended` was retired (absent when nothing was
+ * playing), `started` began (absent when playback stopped). Fires before the
+ * session change that follows it.
+ */
+type TrackListener = (session: Session, ended: { track: CurrentTrack; end: TrackEnd } | undefined, started: CurrentTrack | undefined) => void;
+const trackListeners = new Set<TrackListener>();
+
+export function onTrackChange(fn: TrackListener): () => void {
+  trackListeners.add(fn);
+  return () => trackListeners.delete(fn);
+}
+
+export function emitTrackChange(
+  session: Session,
+  ended: { track: CurrentTrack; end: TrackEnd } | undefined,
+  started: CurrentTrack | undefined,
+): void {
+  for (const fn of trackListeners) fn(session, ended, started);
 }

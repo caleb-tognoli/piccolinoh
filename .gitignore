@@ -3,5 +3,6 @@ dist/
 web/dist/
 .env
 .env.local
+data/
 *.log
 .DS_Store

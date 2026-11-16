@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { WebSocket } from "ws";
-import { signJoinToken, verifyJoinToken } from "../joinToken.js";
+import { type JoinIdentity, signJoinToken, verifyJoinToken } from "../joinToken.js";
 import { applyControl, handlePlaybackError, setAutoplay } from "./control.js";
+import { recordListener, setViewerSource } from "./plays.js";
 import { clientMessageSchema } from "./protocol.js";
 import { onSessionChange, serializeForClient, type Session } from "./session.js";
 import { getSession } from "./store.js";
@@ -10,16 +11,21 @@ const HELLO_TIMEOUT_MS = 5_000;
 /** Well inside the token's hour, so a connected browser always holds a valid one. */
 export const TOKEN_REFRESH_MS = 20 * 60_000;
 
-function freshToken(session: Session, displayName: string): () => string {
-  return () => signJoinToken({ sid: session.id, gid: session.guildId, dn: displayName });
+function freshToken(session: Session, who: JoinIdentity): () => string {
+  const uid = who.userId ? { uid: who.userId } : {};
+  return () => signJoinToken({ sid: session.id, gid: session.guildId, dn: who.name, ...uid });
 }
 
 interface Client {
   id: string;
   displayName?: string;
+  /** Discord user id, from a join link that carried one. Never sent to browsers. */
+  userId?: string;
 }
 
 const clients = new WeakMap<WebSocket, Client>();
+
+setViewerSource((session) => [...session.clients].flatMap((ws) => clients.get(ws)?.userId ?? []));
 
 function send(ws: WebSocket, payload: unknown): void {
   if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
@@ -34,7 +40,10 @@ function stateMessage(session: Session) {
 }
 
 function broadcastPresence(session: Session): void {
-  const members = [...session.clients].map((ws) => clients.get(ws)!);
+  const members = [...session.clients].map((ws) => {
+    const { id, displayName } = clients.get(ws)!;
+    return displayName ? { id, displayName } : { id };
+  });
   broadcast(session, { type: "presence", members });
 }
 
@@ -64,16 +73,15 @@ export function attachSocket(ws: WebSocket): void {
         ws.close(1008, "invalid session");
         return;
       }
-      const displayName = msg.joinToken
-        ? verifyJoinToken(msg.joinToken, { sid: session.id, gid: session.guildId })
-        : null;
+      const who = msg.joinToken ? verifyJoinToken(msg.joinToken, { sid: session.id, gid: session.guildId }) : null;
       const id = randomUUID();
-      clients.set(ws, { id, ...(displayName ? { displayName } : {}) });
+      clients.set(ws, { id, ...(who ? { displayName: who.name } : {}), ...(who?.userId ? { userId: who.userId } : {}) });
       session.clients.add(ws);
+      if (who?.userId) recordListener(session, who.userId);
       // Lets the browser find itself in presence lists. A named browser also
       // gets a fresh token now and every so often, so reconnecting after the
       // link's hour is up doesn't turn it into a guest.
-      const fresh = displayName ? freshToken(session, displayName) : undefined;
+      const fresh = who ? freshToken(session, who) : undefined;
       send(ws, { type: "welcome", clientId: id, ...(fresh ? { joinToken: fresh() } : {}) });
       if (fresh) refreshTimer = setInterval(() => send(ws, { type: "joinToken", joinToken: fresh() }), TOKEN_REFRESH_MS);
       send(ws, stateMessage(session));
@@ -87,8 +95,8 @@ export function attachSocket(ws: WebSocket): void {
         send(ws, { type: "pong", t0: msg.t0, serverMs: Date.now() });
         return;
       case "control": {
-        const { displayName } = clients.get(ws)!;
-        const by = displayName ? { by: displayName } : {};
+        const { displayName, userId } = clients.get(ws)!;
+        const by = { ...(displayName ? { by: displayName } : {}), ...(userId ? { userId } : {}) };
         if (msg.action.kind === "autoplayOn") setAutoplay(session, true, by);
         else applyControl(session, msg.action, by);
         return;

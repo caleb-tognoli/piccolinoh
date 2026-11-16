@@ -57,7 +57,8 @@ function thumbnail(videoId: string): string {
 
 function trackLine(track: Track): string {
   const from = track.startSec ? ` · from ${formatDuration(track.startSec)}` : "";
-  return `**${esc(track.title)}** — ${esc(track.author)} · ${formatDuration(track.durationSec)}${from}`;
+  const added = track.addedBy ? ` · added by ${esc(track.addedBy.name)}` : "";
+  return `**${esc(track.title)}** — ${esc(track.author)} · ${formatDuration(track.durationSec)}${from}${added}`;
 }
 
 function text(content: string): TextDisplayBuilder {
@@ -172,7 +173,7 @@ export function playerView(session: Session, nowMs = Date.now(), recent?: string
             [
               `-# ${paused ? "⏸ Paused" : "▶ Now playing"}`,
               `**[${esc(current.title)}](https://youtu.be/${current.videoId})**`,
-              esc(current.author),
+              esc(current.author) + (current.addedBy ? ` · added by ${esc(current.addedBy.name)}` : ""),
             ].join("\n"),
           ),
         )

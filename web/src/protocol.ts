@@ -6,6 +6,7 @@ export interface Track {
   author: string;
   durationSec: number;
   startSec?: number;
+  addedBy?: { userId: string; name: string };
 }
 
 export interface CurrentTrack extends Track {

@@ -3,12 +3,18 @@ services:
     build: .
     container_name: piccolinoh
     restart: unless-stopped
+    # The app always listens on 3000 inside the container. PUBLISH (in .env)
+    # picks where the host exposes it, e.g. 127.0.0.1:3001 behind a reverse proxy.
     ports:
-      - "3000:3000"
+      - "${PUBLISH:-3000}:3000"
     env_file: .env
     environment:
       NODE_ENV: production
       HTTP_PORT: 3000
+      DATA_DIR: /app/data
+    # Rooms (piccolinoh.db) survive rebuilds and restarts.
+    volumes:
+      - ./data:/app/data
     # Shows "unhealthy" while Discord is unreachable. Docker doesn't restart on
     # that; the app exits by itself once Discord is down and nobody's watching.
     healthcheck:

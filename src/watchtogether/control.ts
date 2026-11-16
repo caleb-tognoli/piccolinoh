@@ -1,5 +1,5 @@
 import { logger } from "../logger.js";
-import { emitAction, type LastAction, notifySessionChange, type Session, type Track } from "./session.js";
+import { emitAction, type LastAction, notifySessionChange, type Session, type Track, type TrackEnd } from "./session.js";
 import { advance, derivePosition, scheduleAdvance } from "./timeline.js";
 
 export type ControlAction =
@@ -27,6 +27,8 @@ function timelineChanged(session: Session): void {
 export interface ControlOptions {
   /** Display name of whoever did it, for the Discord action log. */
   by?: string;
+  /** Their Discord user id: stamped on tracks they add and on plays they skip. */
+  userId?: string;
   /** The caller reports the action itself, so the action log skips it. */
   silent?: boolean;
   /** Name for a multi-track enqueue (playlist / album). */
@@ -35,6 +37,18 @@ export interface ControlOptions {
   note?: LastAction;
   /** A deliberate repeat (/replay), so a duplicate isn't flagged. */
   repeat?: boolean;
+}
+
+/** How a skip ends the current track, for the play log. */
+function skipEnd(opts: ControlOptions): TrackEnd {
+  if (opts.note?.kind === "autoSkip") return { how: "autoSkipped" };
+  return { how: "skipped", ...(opts.userId ? { byUserId: opts.userId } : {}) };
+}
+
+/** A track as queued now: added by whoever is adding it (a re-add from history included). */
+function stamp(track: Track, opts: ControlOptions): Track {
+  const { addedBy: _a, ...rest } = track;
+  return opts.userId && opts.by ? { ...rest, addedBy: { userId: opts.userId, name: opts.by } } : rest;
 }
 
 /** Applies `action`; returns what happened for the action log, or undefined for no-ops. */
@@ -64,7 +78,7 @@ export function applyControl(
       if (!current && queue.length === 0) return;
       // With nothing playing (autoplay stopped), skipping starts the queue head.
       note = current ? { kind: "skip", title: current.title, ...by } : { kind: "start", title: queue[0]!.title, ...by };
-      advance(session);
+      advance(session, true, skipEnd(opts));
       scheduleAdvance(session);
       break;
     case "seek": {
@@ -77,7 +91,7 @@ export function applyControl(
       break;
     }
     case "enqueue": {
-      const { tracks } = action;
+      const tracks = action.tracks.map((t) => stamp(t, opts));
       if (tracks.length === 0) return;
       const startsNow = !current;
       const next = Boolean(action.next) && !startsNow;

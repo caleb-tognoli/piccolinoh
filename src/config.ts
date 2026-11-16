@@ -16,6 +16,7 @@ const schema = z
     HTTP_PORT: z.coerce.number().int().min(1).max(65535).default(3000),
     PUBLIC_BASE_URL: z.string().url().default("http://localhost:3000"),
     JOIN_TOKEN_SECRET: z.string().min(32, "JOIN_TOKEN_SECRET must be at least 32 characters"),
+    DATA_DIR: z.string().min(1).default("data"),
     SPOTIFY_CLIENT_ID: optional,
     SPOTIFY_CLIENT_SECRET: optional,
     NODE_ENV: z.enum(["development", "production", "test"]).default("development"),

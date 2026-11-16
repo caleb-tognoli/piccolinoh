@@ -1,4 +1,4 @@
-import { emitAction, notifySessionChange, type Session } from "./session.js";
+import { emitAction, emitTrackChange, notifySessionChange, type Session, type TrackEnd } from "./session.js";
 
 /** Recently played tracks kept per session; the whole session is broadcast on every change. */
 export const HISTORY_CAP = 200;
@@ -9,10 +9,14 @@ export function derivePosition(session: Session, serverNowMs = Date.now()): numb
   return (serverNowMs - session.current.startedAtServerMs) / 1000;
 }
 
-/** Retires the current track to history and starts the queue head (unless `startNext` is false). */
-export function advance(session: Session, startNext = true): void {
-  if (session.current) {
-    const { startedAtServerMs: _s, pausedAtPositionSec: _p, startSec: _o, ...track } = session.current;
+/**
+ * Retires the current track to history and starts the queue head (unless
+ * `startNext` is false). `end` says how the current track stopped.
+ */
+export function advance(session: Session, startNext = true, end: TrackEnd = { how: "skipped" }): void {
+  const ended = session.current;
+  if (ended) {
+    const { startedAtServerMs: _s, pausedAtPositionSec: _p, startSec: _o, ...track } = ended;
     session.history.push(track);
     if (session.history.length > HISTORY_CAP) session.history.splice(0, session.history.length - HISTORY_CAP);
   }
@@ -26,6 +30,7 @@ export function advance(session: Session, startNext = true): void {
   }
   session.errorTally.clear();
   session.epoch += 1;
+  if (ended || session.current) emitTrackChange(session, ended && { track: ended, end }, session.current);
 }
 
 /** (Re)arms the timer that advances the session when the current track ends. */
@@ -38,7 +43,7 @@ export function scheduleAdvance(session: Session): void {
   session.advanceTimer = setTimeout(() => {
     session.advanceTimer = undefined;
     const wasPlaying = !!session.current;
-    advance(session, session.autoplay);
+    advance(session, session.autoplay, { how: "finished" });
     scheduleAdvance(session);
     notifySessionChange(session);
     if (wasPlaying && !session.current && session.queue.length === 0) emitAction(session, { kind: "finished" });

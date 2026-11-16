@@ -1,7 +1,7 @@
 import { Client, Events, GatewayIntentBits, MessageFlags } from "discord.js";
 import { config } from "../config.js";
 import { logger } from "../logger.js";
-import { getOrCreateSessionForGuild } from "../watchtogether/store.js";
+import { forgetGuild, getOrCreateSessionForGuild } from "../watchtogether/store.js";
 import { handleButton } from "./buttons.js";
 import { commands } from "./commands.js";
 import { startActionLog } from "./log.js";
@@ -30,6 +30,12 @@ export async function startBot(): Promise<Client> {
       logger.fatal({ err }, "failed to register slash commands");
       process.exit(1);
     }
+  });
+
+  // Kicked or the server was deleted (an outage is GuildUnavailable instead).
+  client.on(Events.GuildDelete, (guild) => {
+    forgetGuild(guild.id);
+    logger.info({ guildId: guild.id }, "left a server: room deleted");
   });
 
   client.on(Events.InteractionCreate, async (interaction) => {
