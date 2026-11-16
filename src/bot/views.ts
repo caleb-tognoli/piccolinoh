@@ -145,19 +145,10 @@ export function progressBar(positionSec: number, durationSec: number): string {
   return `\`${formatDuration(positionSec)}\` ${bar} \`${formatDuration(durationSec)}\``;
 }
 
-function upNext(queue: Track[]): string {
-  const [next] = queue;
-  if (!next) return "-# Queue empty";
-  const more = queue.length > 1 ? ` · +${queue.length - 1} more` : "";
-  return `Up next: **${esc(next.title)}**${more}`;
-}
-
 const joinButton = () => button(`${ID.player}:join`, "🔗 Join");
-const queueButton = () => button(`${ID.player}:queue`, "📋 Queue");
 
 /**
- * The live player: what's playing and how far in, a peek at the queue, and
- * controls. `recent` is the footer line naming the latest passing action.
+ * The live player: what's playing and how far in, and controls. `recent` is the footer line naming the latest passing action.
  */
 export function playerView(session: Session, nowMs = Date.now(), recent?: string): V2Message {
   const { current, queue, autoplay } = session;
@@ -179,7 +170,7 @@ export function playerView(session: Session, nowMs = Date.now(), recent?: string
         )
         .setThumbnailAccessory(new ThumbnailBuilder().setURL(thumbnail(current.videoId))),
     );
-    const details = [progressBar(derivePosition(session, nowMs), current.durationSec), upNext(queue)];
+    const details = [progressBar(derivePosition(session, nowMs), current.durationSec)];
     if (!autoplay) details.push("-# Autoplay off · stops after this track");
     if (recent) details.push(recent);
     container.addTextDisplayComponents(text(details.join("\n")));
@@ -189,7 +180,6 @@ export function playerView(session: Session, nowMs = Date.now(), recent?: string
           ? button(`${ID.player}:toggle`, "▶ Resume", ButtonStyle.Primary)
           : button(`${ID.player}:toggle`, "⏸ Pause"),
         button(`${ID.player}:skip`, "⏭ Skip"),
-        queueButton(),
         joinButton(),
       ),
     );
@@ -199,12 +189,12 @@ export function playerView(session: Session, nowMs = Date.now(), recent?: string
   container.setAccentColor(COLORS.idle);
   if (queue.length > 0) {
     // Autoplay stopped after a track; the queue is waiting.
-    const lines = ["-# ⏹ Stopped", upNext(queue)];
+    const lines = ["-# ⏹ Stopped"];
     if (!autoplay) lines.push("-# Autoplay off");
     if (recent) lines.push(recent);
     container.addTextDisplayComponents(text(lines.join("\n")));
     container.addActionRowComponents(
-      row(button(`${ID.player}:skip`, "▶ Play next", ButtonStyle.Primary), queueButton(), joinButton()),
+      row(button(`${ID.player}:skip`, "▶ Play next", ButtonStyle.Primary), joinButton()),
     );
     return v2(container);
   }

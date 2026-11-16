@@ -98,7 +98,7 @@ group("formatting", () => {
 });
 
 group("playerView", () => {
-  it("shows now playing, progress, up next and controls, with no footer", () => {
+  it("shows now playing, progress and controls, with no up next or queue, with no footer", () => {
     const s = playing("n1", "n2", "n3");
     s.current!.startedAtServerMs = 1_000_000;
     const view = playerView(s, 1_000_000 + 111_000);
@@ -106,9 +106,9 @@ group("playerView", () => {
     expect(t).toContain("▶ Now playing");
     expect(t).toContain("title cur");
     expect(t).toContain("`1:51` ▬▬▬▬▬▬●───── `3:42`");
-    expect(t).toContain("Up next: **title n1** · +2 more");
+    expect(t).not.toContain("Up next");
     expect(t).not.toContain("Autoplay");
-    expect(buttons(view).map((b) => b.label)).toEqual(["⏸ Pause", "⏭ Skip", "📋 Queue", "🔗 Join"]);
+    expect(buttons(view).map((b) => b.label)).toEqual(["⏸ Pause", "⏭ Skip", "🔗 Join"]);
   });
 
   it("flips the toggle when paused and notes autoplay off", () => {
@@ -118,7 +118,6 @@ group("playerView", () => {
     const view = playerView(s);
     expect(texts(view)).toContain("⏸ Paused");
     expect(texts(view)).toContain("`0:10`");
-    expect(texts(view)).toContain("-# Queue empty");
     expect(texts(view)).toContain("Autoplay off · stops after this track");
     expect(buttons(view)[0]!.label).toBe("▶ Resume");
   });
@@ -131,7 +130,6 @@ group("playerView", () => {
     expect(texts(view)).toContain("⏹ Stopped");
     expect(buttons(view).map((b) => [b.label, b.custom_id])).toEqual([
       ["▶ Play next", "player:skip"],
-      ["📋 Queue", "player:queue"],
       ["🔗 Join", "player:join"],
     ]);
   });
