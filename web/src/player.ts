@@ -96,7 +96,9 @@ export async function attachPlayer(containerId: string, ws: WSClient): Promise<(
       stopNudge();
       canNudge = true;
       if (videoId) {
-        player.loadVideoById({ videoId, startSeconds: derivedPosition(s) });
+        // loadVideoById autoplays, so a paused room only cues the track.
+        if (paused) player.cueVideoById({ videoId, startSeconds: derivedPosition(s) });
+        else player.loadVideoById({ videoId, startSeconds: derivedPosition(s) });
       } else {
         player.stopVideo();
       }
@@ -180,17 +182,23 @@ export async function attachPlayer(containerId: string, ws: WSClient): Promise<(
     }, NUDGE_CHECK_MS);
   }
 
+  /**
+   * True only when the frame is settled in the opposite play state to the room, which is what
+   * a click on the video does. Loading, buffering, cued and ended are the player's own
+   * transitions (every track change passes through them), not someone taking control.
+   */
+  function divergesFromRoom(state: number): boolean {
+    const cur = session.value?.current;
+    if (!cur) return false;
+    const serverPlaying = cur.pausedAtPositionSec == null;
+    return (serverPlaying && state === PAUSED) || (!serverPlaying && state === PLAYING);
+  }
+
   function onStateChange(state: number): void {
     if (!player) return;
-    const s = session.value;
-    if (!s?.current) return;
+    if (state !== PLAYING && state !== PAUSED) return;
 
-    const serverPlaying = s.current.pausedAtPositionSec == null;
-    const localPlaying = state === PLAYING;
-    const localPaused = state === PAUSED;
-
-    const matches = (serverPlaying && localPlaying) || (!serverPlaying && localPaused);
-    if (matches) {
+    if (!divergesFromRoom(state)) {
       if (reconcileTimer != null) {
         window.clearTimeout(reconcileTimer);
         reconcileTimer = null;
@@ -203,6 +211,8 @@ export async function attachPlayer(containerId: string, ws: WSClient): Promise<(
       reconcileTimer = null;
       const cur = session.value?.current;
       if (!cur || !player) return;
+      // The room may have caught up (or a new track started loading) during the grace period.
+      if (!divergesFromRoom(player.getPlayerState())) return;
       stopNudge();
       player.seekTo(derivedPosition(session.value), true);
       if (cur.pausedAtPositionSec == null) player.playVideo();

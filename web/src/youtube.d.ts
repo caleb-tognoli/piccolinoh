@@ -26,6 +26,7 @@ declare namespace YT {
     stopVideo(): void;
     seekTo(seconds: number, allowSeekAhead?: boolean): void;
     loadVideoById(options: { videoId: string; startSeconds?: number }): void;
+    cueVideoById(options: { videoId: string; startSeconds?: number }): void;
     getCurrentTime(): number;
     getPlayerState(): number;
     /** A suggestion: the player may round it, so read back getPlaybackRate(). */
