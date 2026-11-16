@@ -5,6 +5,7 @@ import { Logo } from "./components/Logo";
 import { Members } from "./components/Members";
 import { NowPlaying } from "./components/NowPlaying";
 import { PlayerFrame } from "./components/PlayerFrame";
+import { Playlists } from "./components/Playlists";
 import { Sidebar } from "./components/Sidebar";
 import { ShortcutsHelp, useKeyboardShortcuts, useShortcutsDialog } from "./components/Shortcuts";
 import { Toast } from "./components/Toast";
@@ -67,6 +68,7 @@ export function SessionView() {
           <div class="flex min-w-0 flex-col gap-4 lg:col-start-2">
             <NowPlaying />
             <Members />
+            <Playlists />
           </div>
         </main>
         <Sidebar theater={wide} />

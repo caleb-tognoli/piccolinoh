@@ -3,9 +3,11 @@ import { config } from "../config.js";
 import { logger } from "../logger.js";
 import { forgetGuild, getOrCreateSessionForGuild } from "../watchtogether/store.js";
 import { handleButton } from "./buttons.js";
-import { commands } from "./commands.js";
+import { commands as basics } from "./commands.js";
 import { startActionLog } from "./log.js";
+import { playlistCommand } from "./playlists.js";
 
+const commands = [...basics, playlistCommand];
 const byName = new Map(commands.map((c) => [c.data.name, c]));
 
 export async function startBot(): Promise<Client> {
@@ -35,11 +37,18 @@ export async function startBot(): Promise<Client> {
   // Kicked or the server was deleted (an outage is GuildUnavailable instead).
   client.on(Events.GuildDelete, (guild) => {
     forgetGuild(guild.id);
-    logger.info({ guildId: guild.id }, "left a server: room deleted");
+    logger.info({ guildId: guild.id }, "left a server: room and playlists deleted");
   });
 
   client.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.inCachedGuild()) return;
+    if (interaction.isAutocomplete()) {
+      await byName
+        .get(interaction.commandName)
+        ?.autocomplete?.(interaction)
+        .catch((err: unknown) => logger.warn({ err, interaction: interaction.commandName }, "autocomplete failed"));
+      return;
+    }
     if (!interaction.isChatInputCommand() && !interaction.isButton()) return;
     const session = getOrCreateSessionForGuild(interaction.guildId);
     const label = interaction.isButton() ? interaction.customId : interaction.commandName;

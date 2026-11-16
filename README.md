@@ -34,16 +34,18 @@ Each server has one room, kept in a SQLite file (`src/db.ts`,
 working across restarts, and its queue, history and autoplay setting come back
 with it; whatever was playing comes back paused where it was. Changes are
 written about a second after they happen and everything is saved on shutdown.
-Removing the bot from a server deletes that server's room and its play log.
+Removing the bot from a server deletes that server's room, its play log and
+its playlists.
 
 The same file keeps a **play log** for stats (`src/watchtogether/plays.ts`):
 one row per track that played in a room, with who added it, how long it
 actually played (paused time doesn't count), how it ended (finished, skipped,
-auto-skipped, or interrupted by a crash) and who skipped it, plus which named
+auto-skipped, or interrupted by a crash), who skipped it and the playlist it
+was queued from, plus which named
 people had the room open while it played. People are recorded by Discord user
 id, which `/join` links now carry; anonymous guests aren't recorded.
-`/privacy count_me:False` leaves someone out of a server's log from then on and
-erases what was already recorded about them there.
+`/privacy count_me:False` leaves someone out of a server's log from then on;
+what was already recorded about them stays.
 
 ## Finding videos
 
@@ -88,9 +90,41 @@ once most of the room has.
 | `/remove <position>`, `/move <from> <to>`, `/shuffle`, `/clear` | Edit the queue |
 | `/replay` | Queue the current video again |
 | `/autoplay <enabled>` | When off, playback stops after each video |
+| `/playlist …` | The server's playlists (see below) |
 | `/privacy <count_me>` | Whether your listening and picks count in this server's stats (ephemeral) |
 
 Queued tracks show who added them, in Discord and on the site.
+
+## Playlists
+
+Each server keeps its own playlists (`src/watchtogether/playlists.ts`,
+`src/bot/playlists.ts`): named, frozen lists of videos that anyone in the
+server can queue or edit. Names are unique per server ignoring case (up to 50
+characters), and autocomplete in every subcommand.
+
+| Command | |
+| --- | --- |
+| `/playlist play <name> [next] [shuffle]` | Queue a playlist |
+| `/playlist add <name> <query>` | Add anything `/play` accepts (a YouTube playlist or Spotify album is copied once) |
+| `/playlist save <name> [what]` | Add what's playing and/or the queue |
+| `/playlist show <name>` | The playlist, paged, with queue all / play next / delete, and queue / up / down / remove per track (ephemeral) |
+| `/playlist list` | Every playlist with its length (ephemeral) |
+| `/playlist rename <name> <new_name>`, `/playlist delete <name>` | |
+
+- `add` and `save` make the playlist if it's new. Videos already in it are
+  skipped; a playlist holds up to 500 tracks (what doesn't fit is left out)
+  and a server up to 100 playlists.
+- Tracks are stored as they were found (id, title, channel, length), so
+  queueing is instant and never looks anything up again.
+- Each track remembers who added it, and the playlist who made it, whatever
+  their `/privacy` setting: that's attribution, not stats.
+- Queued tracks are credited to whoever queued the playlist and carry its name
+  (as it was then), shown as a badge in the site's queue and kept in the play
+  log as `playlist_id` (cleared if the playlist is deleted).
+- Editing replies privately. Queueing posts the usual log line; deleting asks
+  first, then posts `-# Caleb deleted playlist **Chill** (24 tracks)`. A
+  track removed in `/playlist show` can be put back for 30 s.
+- The site has all of it too (see below).
 
 The bot keeps one **player** message per server, always at the bottom of its
 channel: what's playing (who added it on a small line under the artist), its
@@ -116,6 +150,32 @@ follow-up to each command instead.
 
 The site itself offers play/pause, skip, seek and removing queue items, and its
 "Autoplay off" pill turns autoplay back on.
+
+People who opened the site with their `/join` link (so it knows their Discord
+id) can also add tracks and use playlists there; guests with just the room's
+address can only look at playlists. Requests and replies go over the same
+WebSocket (`src/watchtogether/playlistApi.ts`), and every browser in the room
+is sent playlist changes as they happen, wherever they were made.
+
+- **Add box** at the top of the queue, and in an open playlist: results show
+  as you type in a popover under it (from 3 characters, after a 0.6 s pause;
+  Enter searches at once and, once results show, adds the top one), with
+  queue, play next and save to playlist on each. A YouTube video link shows
+  its video right away. YouTube playlist and Spotify links are only named
+  until you add them, then looked up one at a time. Lookups use the same code as `/play` (handed to the server
+  in `src/main.ts`, see `src/watchtogether/lookups.ts`), and each person gets
+  25 searches or link lookups a minute. A picked search result is checked for
+  embedding before it's added.
+- **Playlists** card under the room: the list (queue one, or make a new one),
+  and a playlist opened in place: click its name to rename it, queue it, delete
+  it (confirmed, then logged in Discord), and per track queue, drag to reorder
+  and remove with undo.
+- **Queue button** wherever something can be added: "+ Queue" with an arrow for
+  Next and (for playlists and albums) Shuffled; "+ Add" in a playlist. Row
+  actions in the queue and playlists show on hover (always on touch screens).
+- **Save to playlist** on what's playing, each queue item, the whole queue and
+  recently played: a picker with recently used playlists first, ticks on
+  those already holding the video, and "New playlist…".
 
 ## Setup
 

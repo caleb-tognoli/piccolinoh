@@ -1,4 +1,5 @@
 import {
+  type AutocompleteInteraction,
   type ChatInputCommandInteraction,
   MessageFlags,
   PermissionFlagsBits,
@@ -28,6 +29,7 @@ type Interaction = ChatInputCommandInteraction<"cached">;
 export interface Command {
   data: Pick<SlashCommandBuilder, "name" | "toJSON">;
   execute(interaction: Interaction, session: Session): Promise<unknown>;
+  autocomplete?(interaction: AutocompleteInteraction<"cached">): Promise<unknown>;
 }
 
 const noPings = { parse: [] };
@@ -90,7 +92,7 @@ function canPost(interaction: Interaction): boolean {
  * When the bot can't post there, the player becomes a follow-up to the
  * command instead. Call it in the same tick as the change.
  */
-async function playerBelow(interaction: Interaction, session: Session, reply: Promise<unknown>): Promise<unknown> {
+export async function playerBelow(interaction: Interaction, session: Session, reply: Promise<unknown>): Promise<unknown> {
   const channel = interaction.channel;
   const posted = channel?.isSendable() && canPost(interaction) ? postPlayer(channel, session, reply) : undefined;
   await reply;
@@ -100,7 +102,7 @@ async function playerBelow(interaction: Interaction, session: Session, reply: Pr
 }
 
 /** A command's reply is its log line; Discord's "X used /cmd" header says who. */
-function lineReply(action: LastAction) {
+export function lineReply(action: LastAction) {
   return { content: logLine(describe(action)), allowedMentions: noPings };
 }
 
@@ -321,7 +323,7 @@ export const commands: Command[] = [
         ephemeral(
           countMe
             ? "What you play and listen to here counts in this server's stats again, from now on."
-            : "What you play and listen to here no longer counts in this server's stats, and what was recorded about you here is deleted. Run `/privacy count_me:True` to be counted again.",
+            : "What you play and listen to here no longer counts in this server's stats, from now on. What was already recorded stays. Run `/privacy count_me:True` to be counted again.",
         ),
       );
     },

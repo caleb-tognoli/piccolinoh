@@ -4,9 +4,11 @@ import { config } from "./config.js";
 import { openDatabase } from "./db.js";
 import { setDiscordProbe, startWatchdog } from "./health.js";
 import { logger } from "./logger.js";
+import { setLookupService } from "./watchtogether/lookups.js";
 import { startServer } from "./watchtogether/server.js";
 import { closeStore, openStore } from "./watchtogether/store.js";
 import { startBot } from "./bot/index.js";
+import { botLookups } from "./bot/lookups.js";
 
 process.on("unhandledRejection", (reason) => {
   logger.error({ reason }, "unhandledRejection");
@@ -36,6 +38,8 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
   });
 }
 
+// The site's Add boxes find videos the way /play does.
+setLookupService(botLookups);
 try {
   await startServer(config.HTTP_PORT);
 } catch (err) {

@@ -1,5 +1,6 @@
 import { session } from "../store";
 import { cn } from "../ui/cn";
+import { AddToPlaylist } from "./AddToPlaylist";
 import { AutoplayStatus, FullscreenToggle, TheaterToggle, Transport, VolumeControl } from "./Controls";
 import { Progress, TimeReadout } from "./Progress";
 
@@ -38,6 +39,8 @@ export function NowPlaying({ overlay = false }: { overlay?: boolean }) {
           <VolumeControl />
           <TimeReadout track={current} />
           <div class="ml-auto flex items-center justify-end gap-1">
+            {/* Its menu opens on the page, which fullscreen hides. */}
+            {!overlay && <AddToPlaylist videoIds={[current.videoId]} size="sm" />}
             {/* Wrapped: the button's own display class would win over `hidden`. Theater mode is a wide-window layout. */}
             {!overlay && (
               <span class="hidden lg:contents">

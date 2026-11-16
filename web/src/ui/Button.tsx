@@ -1,4 +1,5 @@
 import type { ComponentChildren, JSX } from "preact";
+import { forwardRef } from "preact/compat";
 import { cn } from "./cn";
 
 type Variant = "primary" | "secondary" | "ghost";
@@ -32,9 +33,13 @@ type Props = Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>, "size"> & {
   children?: ComponentChildren;
 };
 
-export function Button({ variant = "secondary", size = "md", icon, class: className, children, ...rest }: Props) {
+export const Button = forwardRef<HTMLButtonElement, Props>(function Button(
+  { variant = "secondary", size = "md", icon, class: className, children, ...rest },
+  ref,
+) {
   return (
     <button
+      ref={ref}
       type="button"
       {...rest}
       class={cn(
@@ -48,4 +53,4 @@ export function Button({ variant = "secondary", size = "md", icon, class: classN
       {children}
     </button>
   );
-}
+});

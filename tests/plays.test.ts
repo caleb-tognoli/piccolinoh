@@ -94,17 +94,17 @@ describe("play log", () => {
     expect(plays().map((p) => p.added_by)).toEqual(["u1", "u2"]);
   });
 
-  it("leaves out and erases people who opt out, until they opt back in", () => {
+  it("leaves out people who opt out from then on, keeping what was recorded, until they opt back in", () => {
     setViewerSource(() => ["u1"]);
     applyControl(session, { kind: "enqueue", tracks: [track("a"), track("b"), track("c")] }, alice);
     applyControl(session, { kind: "skip" }, alice);
 
     setStatsOptOut("g1", "u1", true);
-    expect(plays()[0]).toMatchObject({ added_by: null, ended_by: null });
-    expect(listeners(plays()[0]!.id)).toEqual([]);
+    expect(plays()[0]).toMatchObject({ added_by: "u1", ended_by: "u1" });
+    expect(listeners(plays()[0]!.id)).toEqual(["u1"]);
     applyControl(session, { kind: "skip" }, alice); // b ends, c starts
     expect(plays().slice(1).map((p) => [p.added_by, p.ended_by])).toEqual([
-      [null, null],
+      ["u1", null], // b started before they opted out
       [null, null],
     ]);
     expect(listeners(plays()[2]!.id)).toEqual([]);

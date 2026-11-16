@@ -1,10 +1,10 @@
 // The play log that server and personal stats are built from: one row per
 // track that played in a room, with who added it, how long it actually played
 // (paused time doesn't count), how it ended and who skipped it, plus which
-// named people had the room open meanwhile. People who opt out (/privacy) are
-// left out of all of it. Only runs while the store has a database open.
+// named people had the room open meanwhile, and the playlist it was queued
+// from. People who opt out (/privacy) are left out from then on; what was
+// recorded before stays. Only runs while the store has a database open.
 import type { DatabaseSync } from "node:sqlite";
-import { transaction } from "../db.js";
 import { logger } from "../logger.js";
 import { type CurrentTrack, onSessionChange, onTrackChange, type Session, type TrackEnd } from "./session.js";
 
@@ -111,26 +111,14 @@ export function isStatsOptedOut(guildId: string, userId: string): boolean {
   return optedOut.has(`${guildId}:${userId}`);
 }
 
-/** Opting out also erases what was already recorded about them in this server. */
+/** Opting out only affects what happens from then on; what was already recorded stays. */
 export function setStatsOptOut(guildId: string, userId: string, out: boolean): void {
   const key = `${guildId}:${userId}`;
   if (out) optedOut.add(key);
   else optedOut.delete(key);
   if (!db) return;
-  const database = db;
-  if (!out) {
-    database.prepare("DELETE FROM stats_optouts WHERE guild_id = ? AND user_id = ?").run(guildId, userId);
-    return;
-  }
-  transaction(database, () => {
-    database.prepare("INSERT OR IGNORE INTO stats_optouts (guild_id, user_id) VALUES (?, ?)").run(guildId, userId);
-    database
-      .prepare("DELETE FROM play_listeners WHERE user_id = ? AND play_id IN (SELECT id FROM plays WHERE guild_id = ?)")
-      .run(userId, guildId);
-    database.prepare("UPDATE plays SET added_by = NULL WHERE guild_id = ? AND added_by = ?").run(guildId, userId);
-    database.prepare("UPDATE plays SET ended_by = NULL WHERE guild_id = ? AND ended_by = ?").run(guildId, userId);
-  });
-  for (const [session, play] of open) if (session.guildId === guildId) play.listeners.delete(userId);
+  if (out) db.prepare("INSERT OR IGNORE INTO stats_optouts (guild_id, user_id) VALUES (?, ?)").run(guildId, userId);
+  else db.prepare("DELETE FROM stats_optouts WHERE guild_id = ? AND user_id = ?").run(guildId, userId);
 }
 
 /** Someone's id for the log, or null when they opted out. */
@@ -169,8 +157,9 @@ function start(session: Session, track: CurrentTrack, nowMs: number): void {
     Number(
       db!
         .prepare(
-          `INSERT INTO plays (room_id, guild_id, video_id, title, author, duration_sec, added_by, started_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          // The playlist may have been deleted since it was queued.
+          `INSERT INTO plays (room_id, guild_id, video_id, title, author, duration_sec, added_by, started_at, playlist_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, (SELECT id FROM playlists WHERE id = ? AND guild_id = ?))`,
         )
         .run(
           session.id,
@@ -181,6 +170,8 @@ function start(session: Session, track: CurrentTrack, nowMs: number): void {
           track.durationSec,
           counted(session.guildId, track.addedBy?.userId),
           nowMs,
+          track.fromPlaylist?.id ?? null,
+          session.guildId,
         ).lastInsertRowid,
     ),
   );

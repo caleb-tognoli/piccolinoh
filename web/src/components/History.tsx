@@ -3,6 +3,7 @@ import { useState } from "preact/hooks";
 import { formatSec } from "../lib/format";
 import { session } from "../store";
 import { cn } from "../ui/cn";
+import { AddToPlaylist } from "./AddToPlaylist";
 
 const MAX_SHOWN = 50;
 
@@ -29,11 +30,12 @@ export function History() {
       {open && (
         <ol class="scroll-thin mt-1 flex max-h-60 flex-col overflow-y-auto overscroll-contain">
           {played.map((track, i) => (
-            <li key={`${i}-${track.videoId}`} class="flex items-baseline gap-3 py-1 text-xs text-muted">
+            <li key={`${i}-${track.videoId}`} class="group flex items-center gap-3 py-0.5 text-xs text-muted">
               <span class="min-w-0 flex-1 truncate" title={`${track.title} — ${track.author}`}>
                 {track.title}
               </span>
               <span class="shrink-0 tabular-nums">{formatSec(track.durationSec)}</span>
+              <AddToPlaylist videoIds={[track.videoId]} class="-my-1 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100" />
             </li>
           ))}
         </ol>

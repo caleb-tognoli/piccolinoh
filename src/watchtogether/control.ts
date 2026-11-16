@@ -37,6 +37,8 @@ export interface ControlOptions {
   note?: LastAction;
   /** A deliberate repeat (/replay), so a duplicate isn't flagged. */
   repeat?: boolean;
+  /** The guild playlist the tracks are queued from. */
+  playlist?: { id: number; name: string };
 }
 
 /** How a skip ends the current track, for the play log. */
@@ -45,10 +47,17 @@ function skipEnd(opts: ControlOptions): TrackEnd {
   return { how: "skipped", ...(opts.userId ? { byUserId: opts.userId } : {}) };
 }
 
-/** A track as queued now: added by whoever is adding it (a re-add from history included). */
+/**
+ * A track as queued now: added by whoever is adding it (a re-add from history
+ * included), and from a playlist only when queued from one now.
+ */
 function stamp(track: Track, opts: ControlOptions): Track {
-  const { addedBy: _a, ...rest } = track;
-  return opts.userId && opts.by ? { ...rest, addedBy: { userId: opts.userId, name: opts.by } } : rest;
+  const { addedBy: _a, fromPlaylist: _f, ...rest } = track;
+  return {
+    ...rest,
+    ...(opts.userId && opts.by ? { addedBy: { userId: opts.userId, name: opts.by } } : {}),
+    ...(opts.playlist ? { fromPlaylist: opts.playlist } : {}),
+  };
 }
 
 /** Applies `action`; returns what happened for the action log, or undefined for no-ops. */

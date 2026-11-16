@@ -6,6 +6,7 @@ import { z } from "zod";
 import { transaction } from "../db.js";
 import { logger } from "../logger.js";
 import { closePlays, currentPlayId, dropPlay, endUnclaimedPlays, openPlays, resumePlay } from "./plays.js";
+import { closePlaylists, forgetGuildPlaylists, openPlaylists } from "./playlists.js";
 import { createSession, onSessionChange, type Session } from "./session.js";
 import { derivePosition } from "./timeline.js";
 
@@ -27,6 +28,7 @@ const trackSchema = z.object({
   durationSec: z.number().min(0),
   startSec: z.number().min(0).optional(),
   addedBy: z.object({ userId: z.string().min(1), name: z.string() }).optional(),
+  fromPlaylist: z.object({ id: z.number().int(), name: z.string() }).optional(),
 });
 
 /** What is kept of a room between runs. Playback comes back paused where it was. */
@@ -43,6 +45,10 @@ type SavedState = z.infer<typeof savedStateSchema>;
 
 export function getSession(id: string): Session | undefined {
   return sessionsById.get(id);
+}
+
+export function findSessionForGuild(guildId: string): Session | undefined {
+  return sessionsByGuild.get(guildId);
 }
 
 export function getOrCreateSessionForGuild(guildId: string): Session {
@@ -67,6 +73,7 @@ export function openStore(database: DatabaseSync): void {
   if (db) throw new Error("store already open");
   db = database;
   openPlays(db);
+  openPlaylists(db);
   const rows = db
     .prepare(
       `SELECT r.id, r.guild_id, s.state FROM rooms r
@@ -89,7 +96,7 @@ export function closeStore(): void {
   drop();
 }
 
-/** The bot left `guildId`: closes its room and deletes everything kept about it, play log included. */
+/** The bot left `guildId`: closes its room and deletes everything kept about it, play log and playlists included. */
 export function forgetGuild(guildId: string): void {
   const session = sessionsByGuild.get(guildId);
   if (session) {
@@ -102,6 +109,7 @@ export function forgetGuild(guildId: string): void {
   }
   db?.prepare("DELETE FROM rooms WHERE guild_id = ?").run(guildId);
   db?.prepare("DELETE FROM stats_optouts WHERE guild_id = ?").run(guildId);
+  forgetGuildPlaylists(guildId);
 }
 
 /** Test helper: drops every session, stopping timers and closing sockets, without saving. */
@@ -120,6 +128,7 @@ function add(session: Session): void {
 }
 
 function detach(): void {
+  closePlaylists();
   unsubscribe?.();
   unsubscribe = undefined;
   clearTimeout(saveTimer);

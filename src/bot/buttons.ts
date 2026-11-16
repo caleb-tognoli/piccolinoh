@@ -1,4 +1,4 @@
-// Button clicks on the player and on the private /queue and /history views.
+// Button clicks on the player and on the private /queue, /history and /playlist views.
 // Clicks answer privately or by updating their own message; what they change
 // reaches the channel through the action log.
 import type { ButtonInteraction } from "discord.js";
@@ -6,6 +6,7 @@ import { applyControl, type ControlAction } from "../watchtogether/control.js";
 import type { LastAction, Session } from "../watchtogether/session.js";
 import { ephemeral, joinReply, type Outcome, pause, person, queueReply, resume, skip, who } from "./commands.js";
 import { adoptPlayer, livePlayer } from "./player.js";
+import { onPlaylistClick, onPlaylistsClick } from "./playlists.js";
 import { capitalize, describe, historyView, ID, type QueueOp, queueView, stalePlayerView } from "./views.js";
 
 type Click = ButtonInteraction<"cached">;
@@ -88,6 +89,10 @@ export function handleButton(click: Click, session: Session): Promise<unknown> {
       return onQueue(click, session, op, args);
     case ID.history:
       return onHistory(click, session, op, args);
+    case ID.playlist:
+      return onPlaylistClick(click, session, [op, ...args]);
+    case ID.playlists:
+      return onPlaylistsClick(click, op, args);
     default:
       return Promise.resolve();
   }

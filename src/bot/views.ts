@@ -11,6 +11,7 @@ import {
   TextDisplayBuilder,
   ThumbnailBuilder,
 } from "discord.js";
+import type { Playlist, PlaylistSummary, PlaylistTrack } from "../watchtogether/playlists.js";
 import type { LastAction, Session, Track } from "../watchtogether/session.js";
 import { derivePosition } from "../watchtogether/timeline.js";
 
@@ -28,10 +29,15 @@ export const ID = {
   player: "player",
   queue: "queue",
   history: "history",
+  /** One playlist's view: `playlist:<id>:<op>:<page>…`. */
+  playlist: "playlist",
+  playlists: "playlists",
 } as const;
 
 export type PlayerOp = "toggle" | "skip" | "join";
 export type QueueOp = "top" | "up" | "down" | "rm";
+/** Per-track buttons in a playlist's view. */
+export type PlaylistTrackOp = "q" | "up" | "down" | "rm";
 
 export interface V2Message {
   components: ContainerBuilder[];
@@ -123,7 +129,14 @@ export function describe(action: LastAction): string {
       return `shuffled ${action.count} tracks`;
     case "autoplay":
       return `turned autoplay ${action.enabled ? "on" : "off"}`;
+    case "playlistDelete":
+      return `deleted playlist **${esc(action.name)}** (${plural(action.count, "track")})`;
   }
+}
+
+/** "1 track", "3 tracks". */
+export function plural(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }
 
 export function capitalize(text: string): string {
@@ -228,17 +241,17 @@ export function stalePlayerView(): V2Message {
   );
 }
 
-function pageCount(total: number): number {
-  return Math.max(1, Math.ceil(total / PAGE_SIZE));
+function pageCount(total: number, size = PAGE_SIZE): number {
+  return Math.max(1, Math.ceil(total / size));
 }
 
-export function clampPage(page: number, total: number): number {
-  return Math.min(Math.max(0, page), pageCount(total) - 1);
+export function clampPage(page: number, total: number, size = PAGE_SIZE): number {
+  return Math.min(Math.max(0, page), pageCount(total, size) - 1);
 }
 
 /** First / previous / position / next / last; undefined when everything fits on one page. */
-function pager(prefix: string, page: number, total: number): ActionRowBuilder<ButtonBuilder> | undefined {
-  const pages = pageCount(total);
+function pager(prefix: string, page: number, total: number, size = PAGE_SIZE): ActionRowBuilder<ButtonBuilder> | undefined {
+  const pages = pageCount(total, size);
   if (pages <= 1) return undefined;
   const last = pages - 1;
   return row(
@@ -257,7 +270,7 @@ function listHeader(prefix: string, page: number, lines: string[]): SectionBuild
     .setButtonAccessory(button(`${prefix}:page:${page}:refresh`, "↻"));
 }
 
-function totalDuration(tracks: Track[]): string {
+function totalDuration(tracks: { durationSec: number }[]): string {
   return formatDuration(tracks.reduce((sum, t) => sum + t.durationSec, 0));
 }
 
@@ -342,6 +355,111 @@ export function historyView(session: Session, page: number, notice?: string): V2
   const pages = pager(ID.history, page, history.length);
   if (pages) container.addActionRowComponents(pages);
   return v2(container);
+}
+
+/** How many playlists a page of /playlist list shows. */
+export const PLAYLISTS_PAGE_SIZE = 10;
+/** Tracks per playlist page: its extra action row leaves room for 4 under the 40-component limit. */
+export const PLAYLIST_PAGE_SIZE = 4;
+
+/** Ephemeral list of the guild's playlists. */
+export function playlistsView(playlists: PlaylistSummary[], page: number): V2Message {
+  page = clampPage(page, playlists.length, PLAYLISTS_PAGE_SIZE);
+  const container = new ContainerBuilder().setAccentColor(COLORS.list);
+  if (playlists.length === 0) {
+    container.addTextDisplayComponents(
+      text("No playlists yet · `/playlist add` or `/playlist save` to make one"),
+    );
+    return v2(container);
+  }
+  const start = page * PLAYLISTS_PAGE_SIZE;
+  const lines = playlists
+    .slice(start, start + PLAYLISTS_PAGE_SIZE)
+    .map((p) => `**${esc(p.name)}** · ${plural(p.trackCount, "track")} · ${formatDuration(p.durationSec)}`);
+  container.addSectionComponents(
+    listHeader(ID.playlists, page, [`**Playlists** · ${playlists.length}`, "-# `/playlist show` to see one"]),
+  );
+  container.addTextDisplayComponents(text(lines.join("\n")));
+  const pages = pager(ID.playlists, page, playlists.length, PLAYLISTS_PAGE_SIZE);
+  if (pages) container.addActionRowComponents(pages);
+  return v2(container);
+}
+
+function playlistTrackLine(track: PlaylistTrack): string {
+  const added = track.addedBy ? ` · added by <@${track.addedBy}>` : "";
+  return `**${esc(track.title)}** — ${esc(track.author)} · ${formatDuration(track.durationSec)}${added}`;
+}
+
+/**
+ * Ephemeral playlist page: queue it all, and per track queue / up / down /
+ * remove. `undo` offers putting back a track just removed.
+ */
+export function playlistView(playlist: Playlist, page: number, notice?: string, undo?: string): V2Message {
+  const { tracks } = playlist;
+  const prefix = `${ID.playlist}:${playlist.id}`;
+  page = clampPage(page, tracks.length, PLAYLIST_PAGE_SIZE);
+  const container = new ContainerBuilder().setAccentColor(COLORS.list);
+
+  const header = [
+    tracks.length > 0
+      ? `**${esc(playlist.name)}** · ${plural(tracks.length, "track")} · ${totalDuration(tracks)}`
+      : `**${esc(playlist.name)}** is empty · \`/playlist add\` to add tracks`,
+  ];
+  if (playlist.createdBy) header.push(`-# Made by <@${playlist.createdBy}>`);
+  if (notice) header.push(`-# ✓ ${notice}`);
+  container.addSectionComponents(listHeader(prefix, page, header));
+
+  const actions = [
+    button(`${prefix}:all:${page}`, "▶ Queue all", ButtonStyle.Primary).setDisabled(tracks.length === 0),
+    button(`${prefix}:next:${page}`, "⏭ Play next").setDisabled(tracks.length === 0),
+    button(`${prefix}:del:${page}`, "🗑 Delete", ButtonStyle.Danger),
+  ];
+  if (undo) actions.unshift(button(`${prefix}:undo:${page}:${undo}`, "↶ Undo"));
+  container.addActionRowComponents(row(...actions));
+
+  const start = page * PLAYLIST_PAGE_SIZE;
+  tracks.slice(start, start + PLAYLIST_PAGE_SIZE).forEach((track, i) => {
+    const index = start + i;
+    const id = (op: PlaylistTrackOp) => `${prefix}:${op}:${page}:${index}:${track.videoId}`;
+    container.addTextDisplayComponents(text(`\`${index + 1}.\` ${playlistTrackLine(track)}`));
+    container.addActionRowComponents(
+      row(
+        button(id("q"), "➕"),
+        button(id("up"), "▲").setDisabled(index === 0),
+        button(id("down"), "▼").setDisabled(index === tracks.length - 1),
+        button(id("rm"), "✕", ButtonStyle.Danger),
+      ),
+    );
+  });
+
+  const pages = pager(prefix, page, tracks.length, PLAYLIST_PAGE_SIZE);
+  if (pages) container.addActionRowComponents(pages);
+  return v2(container);
+}
+
+/** Asks before deleting a playlist; cancelling goes back to its view. */
+export function deletePlaylistView(playlist: Playlist, page: number): V2Message {
+  const prefix = `${ID.playlist}:${playlist.id}`;
+  return v2(
+    new ContainerBuilder()
+      .setAccentColor(COLORS.paused)
+      .addTextDisplayComponents(
+        text(
+          `Delete **${esc(playlist.name)}** (${plural(playlist.tracks.length, "track")})? This can't be undone, and the server sees who did it.`,
+        ),
+      )
+      .addActionRowComponents(
+        row(
+          button(`${prefix}:delok:${page}`, "Delete", ButtonStyle.Danger),
+          button(`${prefix}:page:${page}:cancel`, "Cancel"),
+        ),
+      ),
+  );
+}
+
+/** A private view's final state: just a line. */
+export function noticeView(content: string): V2Message {
+  return v2(new ContainerBuilder().setAccentColor(COLORS.idle).addTextDisplayComponents(text(content)));
 }
 
 /** Ephemeral reply carrying someone's personal site link. */

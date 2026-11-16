@@ -10,6 +10,8 @@ export interface Track {
   startSec?: number;
   /** Who queued it (always someone in Discord: browsers can't add tracks). */
   addedBy?: Person;
+  /** The guild playlist it was queued from, as named then. */
+  fromPlaylist?: { id: number; name: string };
 }
 
 /** A Discord member: their user id and the display name they had then. */
@@ -55,6 +57,7 @@ export type LastAction = { by?: string } & (
   | { kind: "seek"; title: string; toSec: number }
   | { kind: "clear" | "shuffle"; count: number }
   | { kind: "autoplay"; enabled: boolean }
+  | { kind: "playlistDelete"; name: string; count: number }
 );
 
 export interface RemovedTrack {

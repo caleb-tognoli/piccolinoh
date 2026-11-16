@@ -2,6 +2,7 @@ import { ArrowRight, CircleAlert, LoaderCircle } from "lucide-preact";
 import { useEffect, useState } from "preact/hooks";
 import { Logo } from "./components/Logo";
 import { connect, startClockSync } from "./net";
+import { attachPlaylists, resetPlaylists } from "./playlists";
 import { joinError, presence, selfId, serverOffset, session, wsClient } from "./store";
 import { Button } from "./ui/Button";
 
@@ -88,6 +89,7 @@ export function JoinScreen() {
       presence.value = msg.members;
     });
 
+    attachPlaylists(client);
     wsClient.value = client;
     const stopClockSync = startClockSync(client);
 
@@ -99,6 +101,7 @@ export function JoinScreen() {
       session.value = null;
       presence.value = [];
       selfId.value = null;
+      resetPlaylists();
       joinError.value = { message, canRetry };
       setJoining(false);
     }

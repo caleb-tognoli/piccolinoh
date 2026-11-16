@@ -49,6 +49,31 @@ const MIGRATIONS: string[] = [
      user_id  TEXT NOT NULL,
      PRIMARY KEY (guild_id, user_id)
    ) WITHOUT ROWID;`,
+  // 3: playlists a guild keeps, frozen lists of videos anyone there can queue
+  // or edit. name_key is the lowercased name, so names are unique ignoring
+  // case. A play remembers the playlist it was queued from.
+  `CREATE TABLE playlists (
+     id         INTEGER PRIMARY KEY,
+     guild_id   TEXT NOT NULL,
+     name       TEXT NOT NULL,
+     name_key   TEXT NOT NULL,
+     created_by TEXT,
+     created_at INTEGER NOT NULL
+   );
+   CREATE UNIQUE INDEX playlists_guild_name ON playlists (guild_id, name_key);
+   CREATE TABLE playlist_tracks (
+     playlist_id  INTEGER NOT NULL REFERENCES playlists (id) ON DELETE CASCADE,
+     video_id     TEXT NOT NULL,
+     position     INTEGER NOT NULL,
+     title        TEXT NOT NULL,
+     author       TEXT NOT NULL,
+     duration_sec REAL NOT NULL,
+     added_by     TEXT,
+     added_at     INTEGER NOT NULL,
+     PRIMARY KEY (playlist_id, video_id)
+   ) WITHOUT ROWID;
+   CREATE INDEX playlist_tracks_order ON playlist_tracks (playlist_id, position);
+   ALTER TABLE plays ADD COLUMN playlist_id INTEGER REFERENCES playlists (id) ON DELETE SET NULL;`,
 ];
 
 /** Opens (creating if needed) the database at `file`, or in memory for ":memory:", and migrates it. */
