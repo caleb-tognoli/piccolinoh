@@ -1,47 +1,53 @@
 import { session } from "../store";
+import { cn } from "../ui/cn";
 import { AutoplayStatus, FullscreenToggle, TheaterToggle, Transport, VolumeControl } from "./Controls";
-import { Progress } from "./Progress";
+import { Progress, TimeReadout } from "./Progress";
 
 /**
- * Title and controls for the current video; the empty player explains what to do otherwise.
- * A narrow bar stacks title, timeline and buttons, so the title always gets a line of its own.
- * A wide one folds them into one compact row (timeline over buttons · title · status), so a
- * taller player still leaves it on screen. The bar's own width decides, not the window's:
- * the player (and so the bar) is narrow on small desktop windows too.
+ * Title, timeline and controls for the current video, laid out like YouTube's player bar:
+ * title on top, a full-width timeline, then one row of buttons with the clock inline.
+ * `overlay`: the same card drawn over the video in fullscreen, without its own background
+ * (the stage puts a gradient behind it). The empty player explains what to do otherwise.
  */
-export function NowPlaying() {
+export function NowPlaying({ overlay = false }: { overlay?: boolean }) {
   const current = session.value?.current;
   if (!current) return null;
+  // The card under the player stays in the page while fullscreen draws its copy; one heading is enough.
+  const Title = overlay ? "p" : "h1";
   return (
-    <div class="@container">
-      <section class="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-3 rounded-xl border border-line bg-surface p-4 @3xl:grid-cols-[auto_minmax(0,1fr)_auto] @3xl:gap-y-1 @3xl:py-3">
-        <div class="col-span-full min-w-0 @3xl:col-span-1 @3xl:col-start-2 @3xl:row-start-2 @3xl:px-2">
-          <p class="text-xs font-semibold tracking-wider text-accent uppercase @3xl:hidden">Now playing</p>
-          <h1
-            class="mt-1 text-lg leading-snug font-semibold text-balance @3xl:mt-0 @3xl:truncate @3xl:text-base"
-            title={current.title}
-          >
-            {current.title}
-          </h1>
-          <p class="truncate text-sm text-muted">
+    <section class={cn("flex flex-col gap-3", !overlay && "rounded-xl border border-line bg-surface p-4")}>
+      <div class="min-w-0">
+        <Title class="line-clamp-2 text-lg leading-snug font-semibold text-balance" title={current.title}>
+          {current.title}
+        </Title>
+        {/* The autoplay pill sits here rather than in the button row, which has no room for it on phones. */}
+        <div class="flex min-w-0 items-center gap-2">
+          <p class="min-w-0 truncate text-sm text-muted">
             {current.author}
             {current.addedBy ? ` · added by ${current.addedBy.name}` : ""}
           </p>
-        </div>
-        <div class="col-span-full @3xl:row-start-1">
-          <Progress track={current} />
-        </div>
-        <Transport class="@3xl:col-start-1 @3xl:row-start-2" />
-        <div class="flex min-w-0 items-center justify-end gap-1 @3xl:col-start-3 @3xl:row-start-2">
-          <AutoplayStatus />
-          <VolumeControl />
-          {/* Wrapped: the button's own display class would win over `hidden`. Theater mode is a wide-window layout. */}
-          <span class="hidden lg:contents">
-            <TheaterToggle />
+          <span class="ml-auto shrink-0">
+            <AutoplayStatus />
           </span>
-          <FullscreenToggle />
         </div>
-      </section>
-    </div>
+      </div>
+      <div class="flex flex-col gap-1">
+        <Progress track={current} />
+        <div class="flex min-w-0 items-center gap-1">
+          <Transport />
+          <VolumeControl />
+          <TimeReadout track={current} />
+          <div class="ml-auto flex items-center justify-end gap-1">
+            {/* Wrapped: the button's own display class would win over `hidden`. Theater mode is a wide-window layout. */}
+            {!overlay && (
+              <span class="hidden lg:contents">
+                <TheaterToggle />
+              </span>
+            )}
+            <FullscreenToggle />
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }

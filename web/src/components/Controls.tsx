@@ -35,10 +35,9 @@ export function Transport({ class: className }: { class?: string }) {
 
   const paused = current.pausedAtPositionSec != null;
   return (
-    <fieldset disabled={!connected.value} class={cn("flex items-center gap-2", className)}>
+    <fieldset disabled={!connected.value} class={cn("flex items-center gap-1", className)}>
       <Button
         variant="primary"
-        size="lg"
         icon
         aria-label={paused ? "Play" : "Pause"}
         onClick={() => sendControl({ kind: paused ? "play" : "pause" })}
@@ -73,13 +72,16 @@ export function AutoplayStatus() {
   );
 }
 
-/** Local only: this browser's mute and volume. The slider is hidden on phones, where the hardware buttons set volume. */
+/**
+ * Local only: this browser's mute and volume. The slider slides out on hover or keyboard focus,
+ * like YouTube's, and is hidden on phones, where the hardware buttons set volume.
+ */
 export function VolumeControl() {
   const silent = muted.value || volume.value === 0;
   const level = silent ? 0 : volume.value;
   const Icon = silent ? VolumeX : level < 50 ? Volume1 : Volume2;
   return (
-    <div class="flex items-center">
+    <div class="group/volume flex items-center">
       <Button
         variant="ghost"
         icon
@@ -97,7 +99,11 @@ export function VolumeControl() {
         value={level}
         aria-label="Volume"
         aria-valuetext={`${level}%`}
-        class="hidden h-1 w-20 cursor-pointer accent-accent pointer-fine:block"
+        class={cn(
+          "pointer-events-none hidden h-1 w-0 cursor-pointer accent-accent opacity-0 transition-[width,opacity,margin] duration-200 pointer-fine:block",
+          "group-focus-within/volume:mx-1 group-focus-within/volume:w-20 group-focus-within/volume:opacity-100",
+          "group-hover/volume:pointer-events-auto group-hover/volume:mx-1 group-hover/volume:w-20 group-hover/volume:opacity-100",
+        )}
         onInput={(e) => setVolume(Number(e.currentTarget.value))}
         // A mouse drag leaves focus here, which would swallow the room's keyboard shortcuts.
         onPointerUp={(e) => e.currentTarget.blur()}

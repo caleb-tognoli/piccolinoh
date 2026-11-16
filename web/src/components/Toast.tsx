@@ -2,8 +2,12 @@ import { connected, toast } from "../store";
 
 export function Toast() {
   const t = toast.value;
+  // In fullscreen this renders inside the stage, whose --lift raises it above the controls there.
   return (
-    <div aria-live="polite" class="pointer-events-none fixed inset-x-0 bottom-4 z-10 flex justify-center px-4">
+    <div
+      aria-live="polite"
+      class="pointer-events-none fixed inset-x-0 bottom-4 z-10 flex translate-y-[calc(var(--lift,0px)*-1)] justify-center px-4 transition-[translate] duration-300"
+    >
       {t && (
         <div class="pointer-events-auto flex max-w-md items-center gap-4 rounded-lg border border-accent/40 bg-raised py-2.5 pr-2.5 pl-4 text-sm shadow-xl shadow-black/50">
           <span class="line-clamp-2 min-w-0">{t.text}</span>

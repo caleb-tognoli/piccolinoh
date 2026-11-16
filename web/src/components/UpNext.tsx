@@ -42,7 +42,8 @@ export function UpNext() {
       aria-hidden={!show}
       class={cn(
         "pointer-events-none absolute right-2 bottom-2 flex w-56 items-center gap-2.5 rounded-lg border border-line bg-bg/85 p-2 shadow-xl shadow-black/50 backdrop-blur-sm transition duration-300 sm:right-4 sm:bottom-4 sm:w-72 sm:gap-3",
-        show ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0",
+        // --lift: the stage's fullscreen controls, which this sits above while they show.
+        show ? "-translate-y-(--lift) opacity-100" : "translate-y-[calc(0.5rem-var(--lift))] opacity-0",
       )}
     >
       <Thumbnail videoId={next.videoId} class="w-16 sm:w-24" />

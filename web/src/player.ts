@@ -1,7 +1,7 @@
 import { effect } from "@preact/signals";
 import { trackPosition, type WSClient } from "./net";
 import type { SerializedSession } from "./protocol";
-import { hideToast, lagging, muted, session, showToast, volume } from "./store";
+import { hideToast, lagging, muted, playerVolume, session, showToast, volume } from "./store";
 
 const IFRAME_API_URL = "https://www.youtube.com/iframe_api";
 const SYNC_INTERVAL_MS = 2000;
@@ -228,8 +228,9 @@ export async function attachPlayer(containerId: string, ws: WSClient): Promise<(
   });
 
   const unsubVolume = effect(() => {
-    const level = volume.value;
-    const silent = muted.value;
+    const level = playerVolume(volume.value);
+    // YouTube's setVolume(0) isn't reliably silent, so a zero level mutes as well.
+    const silent = muted.value || level === 0;
     if (!player) return;
     player.setVolume(level);
     if (silent) player.mute();

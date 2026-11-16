@@ -2,17 +2,44 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { formatSec } from "../lib/format";
 import { trackPosition } from "../net";
 import type { CurrentTrack } from "../protocol";
-import { connected, sendControl, session } from "../store";
+import { connected, sendControl, session, showRemaining, toggleRemaining } from "../store";
 import { cn } from "../ui/cn";
 
 const TICK_MS = 250;
 const KEY_STEP_SEC = 5;
 const PENDING_TIMEOUT_MS = 2000;
 
+/** Re-renders every tick while the track plays, so positions read from it stay current. */
+function useTicker(active: boolean): void {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!active) return;
+    const id = window.setInterval(() => setTick((n) => n + 1), TICK_MS);
+    return () => window.clearInterval(id);
+  }, [active]);
+}
+
+/** "1:23 / 4:05", or "-2:42" left; clicking switches between the two for this browser. */
+export function TimeReadout({ track }: { track: CurrentTrack }) {
+  useTicker(track.pausedAtPositionSec == null);
+  const duration = track.durationSec;
+  const position = Math.max(0, Math.min(duration, trackPosition(track)));
+  const remaining = showRemaining.value;
+  return (
+    <button
+      type="button"
+      class="shrink-0 cursor-pointer rounded-md px-2 py-1 text-sm whitespace-nowrap text-muted tabular-nums transition-colors select-none hover:text-ink"
+      title={remaining ? "Show elapsed time" : "Show time remaining"}
+      onClick={toggleRemaining}
+    >
+      {remaining ? `-${formatSec(duration - position)}` : `${formatSec(position)} / ${formatSec(duration)}`}
+    </button>
+  );
+}
+
 /** Shared timeline: click or drag to seek the room, arrow keys step 5 s. */
 export function Progress({ track }: { track: CurrentTrack }) {
   const barRef = useRef<HTMLDivElement>(null);
-  const [, setTick] = useState(0);
   const [dragSec, setDragSec] = useState<number | null>(null);
   const [hoverSec, setHoverSec] = useState<number | null>(null);
   // A seek we sent, shown until the server's new state arrives so the bar doesn't snap back.
@@ -22,11 +49,7 @@ export function Progress({ track }: { track: CurrentTrack }) {
   const enabled = connected.value;
   const duration = track.durationSec;
 
-  useEffect(() => {
-    if (paused) return;
-    const id = window.setInterval(() => setTick((n) => n + 1), TICK_MS);
-    return () => window.clearInterval(id);
-  }, [paused]);
+  useTicker(!paused);
 
   useEffect(() => setPendingSec(null), [epoch]);
   useEffect(() => {
@@ -49,7 +72,7 @@ export function Progress({ track }: { track: CurrentTrack }) {
   };
 
   return (
-    <div class={cn("flex flex-col gap-1", !enabled && "opacity-50")}>
+    <div class={cn(!enabled && "opacity-50")}>
       <div
         ref={barRef}
         role="slider"
@@ -112,10 +135,6 @@ export function Progress({ track }: { track: CurrentTrack }) {
             {formatSec((dragSec ?? hoverSec)!)}
           </div>
         )}
-      </div>
-      <div class="flex justify-between text-xs text-muted tabular-nums">
-        <span>{formatSec(position)}</span>
-        <span>{formatSec(duration)}</span>
       </div>
     </div>
   );

@@ -6,6 +6,12 @@
       "runtimeExecutable": "corepack",
       "runtimeArgs": ["pnpm", "dev"],
       "port": 3000
+    },
+    {
+      "name": "web-only",
+      "runtimeExecutable": "corepack",
+      "runtimeArgs": ["pnpm", "--dir", "web", "dev"],
+      "port": 5173
     }
   ]
 }
