@@ -10,12 +10,10 @@ import { applyControl, type ControlOptions, setAutoplay } from "../watchtogether
 import { isStatsOptedOut, setStatsOptOut } from "../watchtogether/plays.js";
 import type { LastAction, Person, Session } from "../watchtogether/session.js";
 import { derivePosition } from "../watchtogether/timeline.js";
-import { isTransient } from "./lines.js";
-import { adoptPlayer, livePlayer, postPlayer } from "./player.js";
+import { adoptPlayer, postPlayer } from "./player.js";
 import { type ResolveResult, resolveArtist, resolveInput } from "./resolver.js";
 import { parseSeek } from "./time.js";
 import {
-  capitalize,
   describe,
   formatDuration,
   historyView,
@@ -50,7 +48,7 @@ export function queueReply(session: Session) {
 
 // Session changes shared by slash commands and buttons. Each returns an error
 // message, or what it did. Slash commands pass `silent`, since their own reply
-// is the log line (passing actions still reach the player's footer).
+// is the log line.
 
 /** An error message, or the action that was applied. */
 export type Outcome = string | LastAction;
@@ -116,18 +114,11 @@ export function who(interaction: { member: { displayName: string }; user: { id: 
   return { by: interaction.member.displayName, userId: interaction.user.id };
 }
 
-/**
- * Runs a change; replies with its error privately, or with its log line
- * followed by the player. Passing changes show on the player's footer, so
- * their reply is private and the player stays put.
- */
+/** Runs a change; replies with its error privately, or with its log line followed by the player. */
 function act(interaction: Interaction, session: Session, change: (opts: ControlOptions) => Outcome) {
   const outcome = change({ ...who(interaction), silent: true });
   if (typeof outcome === "string") return interaction.reply(ephemeral(outcome));
-  if (!isTransient(outcome)) return playerBelow(interaction, session, interaction.reply(lineReply(outcome)));
-  const reply = interaction.reply(ephemeral(capitalize(describe(outcome))));
-  // No player to show the footer (e.g. after a restart): post one.
-  return livePlayer(interaction.guildId) ? reply : playerBelow(interaction, session, reply);
+  return playerBelow(interaction, session, interaction.reply(lineReply(outcome)));
 }
 
 /** /np: just the player, moved to the bottom of the channel. */

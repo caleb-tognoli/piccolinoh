@@ -1,16 +1,13 @@
-// The action log: one small line per change worth keeping in chat (queueing,
-// clearing, shuffling, autoplay, the queue running out), posted in the live
-// player's channel just above the player. Passing actions (skips, pauses, queue
-// tweaks) go to the player's footer instead. Slash commands answer with their
-// own line (their actions arrive silent); this covers buttons, the site and
+// The action log: one small line per thing that happened, posted in the live
+// player's channel just above the player. Slash commands answer with their own
+// line (their actions arrive silent); this covers buttons, the site and
 // automatic events. Quick repeats by the same person edit the last line
 // instead of posting a new one.
 import type { Message, SendableChannels } from "discord.js";
 import { logger } from "../logger.js";
 import { type LastAction, onAction, type Session } from "../watchtogether/session.js";
-import { isTransient, lineText, merges, type Stack, stack } from "./lines.js";
+import { lineText, merges, type Stack, stack } from "./lines.js";
 import { followLogLine, livePlayer } from "./player.js";
-import { noteRecent } from "./recent.js";
 
 interface Line extends Stack {
   message: Message;
@@ -70,14 +67,9 @@ function logAction(session: Session, action: LastAction): void {
   void followLogLine(session, posted);
 }
 
-/**
- * Starts reporting actions: passing ones on the player's footer (silent or
- * not, since a slash command's reply for those is private), the rest as log
- * lines unless silent.
- */
+/** Starts posting a log line for every action that isn't silent. */
 export function startActionLog(): () => void {
   return onAction((session, action, silent) => {
-    if (isTransient(action)) noteRecent(session.guildId, action);
-    else if (!silent) logAction(session, action);
+    if (!silent) logAction(session, action);
   });
 }

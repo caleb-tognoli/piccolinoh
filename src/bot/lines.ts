@@ -1,33 +1,11 @@
-// What a reported action looks like as a line of text, shared by the action
-// log and the player's footer: which actions are worth keeping in chat, and how
-// quick repeats by the same person stack into one line.
+// What a reported action looks like as an action log line, and how quick
+// repeats by the same person stack into one line.
 import type { LastAction } from "../watchtogether/session.js";
 import { describe, esc, logLine } from "./views.js";
 
 /** How long after a line the same person's next action may merge into it. */
 export const MERGE_WINDOW_MS = 30_000;
 const STACK_SHOWN = 4;
-
-/**
- * Actions that only describe the moment (playback and queue tweaks). They show
- * on the player's footer instead of posting a line; the rest change what's
- * coming up and stay in chat.
- */
-const TRANSIENT = new Set<LastAction["kind"]>([
-  "play",
-  "pause",
-  "skip",
-  "start",
-  "autoSkip",
-  "seek",
-  "reorder",
-  "remove",
-  "restore",
-]);
-
-export function isTransient(action: LastAction): boolean {
-  return TRANSIENT.has(action.kind);
-}
 
 /** Actions that list their tracks when merged: "removed **A**, **B**". */
 const STACK_VERBS: Partial<Record<LastAction["kind"], string>> = {

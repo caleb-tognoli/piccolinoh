@@ -98,14 +98,14 @@ group("formatting", () => {
 });
 
 group("playerView", () => {
-  it("shows now playing, progress and controls, with no up next or queue, with no footer", () => {
+  it("shows now playing, a live countdown and controls, with no up next or queue", () => {
     const s = playing("n1", "n2", "n3");
     s.current!.startedAtServerMs = 1_000_000;
-    const view = playerView(s, 1_000_000 + 111_000);
+    const view = playerView(s);
     const t = texts(view);
-    expect(t).toContain("▶ Now playing");
-    expect(t).toContain("title cur");
-    expect(t).toContain("`1:51` ▬▬▬▬▬▬●───── `3:42`");
+    expect(t).toContain("-# **NOW PLAYING**\n**[title cur](https://youtu.be/cur)**\nauthor");
+    expect(t).not.toContain("added by");
+    expect(t).toContain("`3:42` · ends <t:1222:R>");
     expect(t).not.toContain("Up next");
     expect(t).not.toContain("Autoplay");
     expect(buttons(view).map((b) => b.label)).toEqual(["⏸ Pause", "⏭ Skip", "🔗 Join"]);
@@ -116,7 +116,7 @@ group("playerView", () => {
     s.current!.pausedAtPositionSec = 10;
     s.autoplay = false;
     const view = playerView(s);
-    expect(texts(view)).toContain("⏸ Paused");
+    expect(texts(view)).toContain("-# **PAUSED**");
     expect(texts(view)).toContain("`0:10`");
     expect(texts(view)).toContain("Autoplay off · stops after this track");
     expect(buttons(view)[0]!.label).toBe("▶ Resume");
@@ -127,22 +127,17 @@ group("playerView", () => {
     s.queue = [track("n1")];
     s.autoplay = false;
     const view = playerView(s);
-    expect(texts(view)).toContain("⏹ Stopped");
+    expect(texts(view)).toContain("-# **STOPPED**");
     expect(buttons(view).map((b) => [b.label, b.custom_id])).toEqual([
       ["▶ Play next", "player:skip"],
       ["🔗 Join", "player:join"],
     ]);
   });
 
-  it("shows the footer line in every state", () => {
-    const footer = "-# Bob skipped **A** · <t:1:R>";
-    expect(texts(playerView(playing("n1"), Date.now(), footer))).toContain(footer);
-    const stopped = createSession("g");
-    stopped.queue = [track("n1")];
-    expect(texts(playerView(stopped, Date.now(), footer))).toContain(footer);
-    expect(texts(playerView(createSession("g"), Date.now(), footer))).toBe(
-      `Nothing playing · \`/play\` to queue something\n${footer}`,
-    );
+  it("puts who added the track on a muted line under the artist", () => {
+    const s = playing();
+    s.current!.addedBy = { userId: "1", name: "Ca_leb" };
+    expect(texts(playerView(s))).toContain("author\n-# added by Ca\\_leb");
   });
 
   it("collapses to an idle line", () => {

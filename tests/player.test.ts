@@ -1,9 +1,8 @@
 import type { Message, SendableChannels } from "discord.js";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
-import { isTransient, lineText, mergeGroup } from "../src/bot/lines.js";
+import { lineText, mergeGroup } from "../src/bot/lines.js";
 import { startActionLog } from "../src/bot/log.js";
-import { BURIED_AFTER, adoptPlayer, followLogLine, livePlayer, postPlayer } from "../src/bot/player.js";
-import { hasRecent, noteRecent, RECENT_SHOWN_MS, recentLine } from "../src/bot/recent.js";
+import { adoptPlayer, livePlayer, postPlayer } from "../src/bot/player.js";
 import { applyControl } from "../src/watchtogether/control.js";
 import { createSession, type Session } from "../src/watchtogether/session.js";
 import { track } from "./helpers.js";
@@ -111,48 +110,56 @@ describe("player", () => {
     expect(await posted).toBe(true);
   });
 
-  it("session changes edit in place, and identical renders are skipped", async () => {
+  it("session changes re-post instead of editing, and identical renders are skipped", async () => {
     applyControl(session, { kind: "enqueue", tracks: [track("a")] }, { silent: true });
     await postPlayer(asChannel(channel), session);
     const player = channel.sent[0]!;
 
     applyControl(session, { kind: "pause" }, { silent: true });
     await flush();
-    expect(player.edit).toHaveBeenCalledOnce();
+    expect(player.delete).toHaveBeenCalledOnce();
+    expect(transcript(channel)).toEqual(["[player]"]);
 
-    applyControl(session, { kind: "seek", toSec: 5 });
-    applyControl(session, { kind: "seek", toSec: 5 });
+    applyControl(session, { kind: "seek", toSec: 5 }, { silent: true });
+    applyControl(session, { kind: "seek", toSec: 5 }, { silent: true });
     await flush();
-    expect(player.edit).toHaveBeenCalledTimes(2);
+    applyControl(session, { kind: "enqueue", tracks: [track("b")] }, { silent: true }); // not on the player
+    await flush();
+    expect(channel.send).toHaveBeenCalledTimes(3);
+    expect(channel.sent.flatMap((m) => m.edit.mock.calls)).toEqual([]);
   });
 
-  it("re-posts on automatic updates once buried, but not when a log line merged", async () => {
-    applyControl(session, { kind: "enqueue", tracks: [track("a"), track("b")] }, { silent: true });
-    await postPlayer(asChannel(channel), session);
-    channel.chatter = BURIED_AFTER;
-
-    applyControl(session, { kind: "pause" }, { silent: true });
-    await followLogLine(session, Promise.resolve(false));
-    // A merged line counts as an edit, but the session change alone still checks for burial.
-    expect(channel.sent).toHaveLength(1);
-    expect(channel.sent[0]!.isPlayer).toBe(true);
-    expect(channel.send).toHaveBeenCalledTimes(2);
-  });
-
-  it("drops a player whose message can't be edited", async () => {
-    await postPlayer(asChannel(channel), session);
-    channel.sent[0]!.edit.mockRejectedValueOnce(new Error("Unknown Message"));
+  it("edits in place where it can't post, and drops a player it can't edit either", async () => {
     applyControl(session, { kind: "enqueue", tracks: [track("a")] }, { silent: true });
+    await postPlayer(asChannel(channel), session);
+    const player = channel.sent[0]!;
+
+    channel.send.mockRejectedValueOnce(new Error("Missing Permissions"));
+    applyControl(session, { kind: "pause" }, { silent: true });
+    await flush();
+    expect(player.edit).toHaveBeenCalledOnce();
+    expect(livePlayer(session.guildId)?.id).toBe(player.id);
+
+    channel.send.mockRejectedValueOnce(new Error("Missing Permissions"));
+    player.edit.mockRejectedValueOnce(new Error("Unknown Message"));
+    applyControl(session, { kind: "play" }, { silent: true });
     await flush();
     expect(livePlayer(session.guildId)).toBeUndefined();
   });
 
-  it("adopting a message makes it live and renders into it", async () => {
-    const message = await channel.send({});
-    adoptPlayer(message as unknown as Message, session);
+  it("adopting a fresh render leaves it be; adopting an old player re-posts it", async () => {
+    const fresh = await channel.send({});
+    adoptPlayer(fresh as unknown as Message, session);
     await flush();
-    expect(livePlayer(session.guildId)?.id).toBe(message.id);
-    expect(message.edit).toHaveBeenCalledOnce();
+    expect(livePlayer(session.guildId)?.id).toBe(fresh.id);
+    expect(channel.send).toHaveBeenCalledOnce();
+
+    const old = await channel.send({});
+    adoptPlayer(old as unknown as Message, session, false);
+    await flush();
+    expect(old.delete).toHaveBeenCalledOnce();
+    expect(livePlayer(session.guildId)?.id).toBe(channel.sent.at(-1)!.id);
+    expect(old.edit).not.toHaveBeenCalled();
   });
 });
 
@@ -188,16 +195,14 @@ describe("action log", () => {
     expect(transcript(channel)).toEqual(["[player]"]);
   });
 
-  it("shows passing actions on the player's footer instead of posting", async () => {
+  it("logs passing actions too, and never edits the player", async () => {
     await withPlayer();
-    const player = channel.sent[0]!;
     applyControl(session, { kind: "pause" }, { by: "Bob" });
     applyControl(session, { kind: "skip" }, { by: "Ana", silent: true });
     applyControl(session, { kind: "reorder", from: 1, to: 0 }, { by: "Ana" });
     await flush();
-    expect(transcript(channel)).toEqual(["[player]"]);
-    expect(player.edit).toHaveBeenCalled();
-    expect(recentLine(session.guildId)).toMatch(/^-# Ana moved \*\*title d\*\* to #1 · <t:\d+:R>$/);
+    expect(transcript(channel)).toEqual(["-# Bob paused", "-# Ana moved **title d** to #1", "[player]"]);
+    expect(channel.sent.at(-1)!.edit).not.toHaveBeenCalled();
   });
 
   it("merges the same person's repeats into the line above the player", async () => {
@@ -238,30 +243,7 @@ describe("action log", () => {
   });
 });
 
-describe("player footer", () => {
-  it("stacks the same person's repeats and expires", () => {
-    const guildId = `g${++guild}`;
-    noteRecent(guildId, { kind: "remove", title: "a", by: "Bob" }, 1_000_000);
-    noteRecent(guildId, { kind: "remove", title: "b", by: "Bob" }, 1_010_000);
-    expect(recentLine(guildId, 1_010_000)).toBe("-# Bob removed **a**, **b** · <t:1010:R>");
-
-    noteRecent(guildId, { kind: "pause", by: "Ana" }, 1_020_000);
-    expect(recentLine(guildId, 1_020_000)).toBe("-# Ana paused · <t:1020:R>");
-    expect(hasRecent(guildId)).toBe(true);
-    expect(recentLine(guildId, 1_020_000 + RECENT_SHOWN_MS)).toBeUndefined();
-    expect(hasRecent(guildId)).toBe(false);
-  });
-});
-
 describe("merge rules", () => {
-  it("keeps queue changes in chat and leaves passing actions to the footer", () => {
-    expect(isTransient({ kind: "skip", title: "x" })).toBe(true);
-    expect(isTransient({ kind: "reorder", title: "x", to: 1 })).toBe(true);
-    expect(isTransient({ kind: "enqueue", title: "x", count: 1 })).toBe(false);
-    expect(isTransient({ kind: "finished" })).toBe(false);
-    expect(isTransient({ kind: "seek", title: "x", toSec: 1 })).toBe(true);
-  });
-
   it("collapses one person's seeks in a track into the latest spot", () => {
     expect(mergeGroup({ kind: "seek", title: "x", toSec: 5, by: "B" })).toBe(
       mergeGroup({ kind: "seek", title: "x", toSec: 10, by: "B" }),

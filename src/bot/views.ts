@@ -147,32 +147,48 @@ export function progressBar(positionSec: number, durationSec: number): string {
 
 const joinButton = () => button(`${ID.player}:join`, "🔗 Join");
 
+/** The small status label above the title: "-# **NOW PLAYING**". */
+function statusLabel(label: string): string {
+  return `-# **${label}**`;
+}
+
 /**
- * The live player: what's playing and how far in, and controls. `recent` is the footer line naming the latest passing action.
+ * How far in the current track is. Discord renders `<t:…:R>` live ("ends in
+ * 2 minutes", then a seconds countdown), so a playing track's line stays
+ * current without editing the message; a paused one shows a still bar.
  */
-export function playerView(session: Session, nowMs = Date.now(), recent?: string): V2Message {
+function timeline(session: Session): string {
+  const current = session.current!;
+  if (current.pausedAtPositionSec != null) return progressBar(current.pausedAtPositionSec, current.durationSec);
+  const endsAt = Math.round((current.startedAtServerMs + current.durationSec * 1000) / 1000);
+  return `\`${formatDuration(current.durationSec)}\` · ends <t:${endsAt}:R>`;
+}
+
+/**
+ * The live player: what's playing, how far in, and controls. It renders the
+ * same until the session changes (nothing in it depends on the clock), so it
+ * can be re-posted on changes instead of edited.
+ */
+export function playerView(session: Session): V2Message {
   const { current, queue, autoplay } = session;
   const container = new ContainerBuilder();
 
   if (current) {
     const paused = current.pausedAtPositionSec != null;
     container.setAccentColor(paused ? COLORS.paused : COLORS.playing);
+    const lines = [
+      statusLabel(paused ? "PAUSED" : "NOW PLAYING"),
+      `**[${esc(current.title)}](https://youtu.be/${current.videoId})**`,
+      esc(current.author),
+    ];
+    if (current.addedBy) lines.push(`-# added by ${esc(current.addedBy.name)}`);
     container.addSectionComponents(
       new SectionBuilder()
-        .addTextDisplayComponents(
-          text(
-            [
-              `-# ${paused ? "⏸ Paused" : "▶ Now playing"}`,
-              `**[${esc(current.title)}](https://youtu.be/${current.videoId})**`,
-              esc(current.author) + (current.addedBy ? ` · added by ${esc(current.addedBy.name)}` : ""),
-            ].join("\n"),
-          ),
-        )
+        .addTextDisplayComponents(text(lines.join("\n")))
         .setThumbnailAccessory(new ThumbnailBuilder().setURL(thumbnail(current.videoId))),
     );
-    const details = [progressBar(derivePosition(session, nowMs), current.durationSec)];
+    const details = [timeline(session)];
     if (!autoplay) details.push("-# Autoplay off · stops after this track");
-    if (recent) details.push(recent);
     container.addTextDisplayComponents(text(details.join("\n")));
     container.addActionRowComponents(
       row(
@@ -189,9 +205,8 @@ export function playerView(session: Session, nowMs = Date.now(), recent?: string
   container.setAccentColor(COLORS.idle);
   if (queue.length > 0) {
     // Autoplay stopped after a track; the queue is waiting.
-    const lines = ["-# ⏹ Stopped"];
+    const lines = [statusLabel("STOPPED")];
     if (!autoplay) lines.push("-# Autoplay off");
-    if (recent) lines.push(recent);
     container.addTextDisplayComponents(text(lines.join("\n")));
     container.addActionRowComponents(
       row(button(`${ID.player}:skip`, "▶ Play next", ButtonStyle.Primary), joinButton()),
@@ -199,9 +214,7 @@ export function playerView(session: Session, nowMs = Date.now(), recent?: string
     return v2(container);
   }
 
-  container.addTextDisplayComponents(
-    text(["Nothing playing · `/play` to queue something", ...(recent ? [recent] : [])].join("\n")),
-  );
+  container.addTextDisplayComponents(text("Nothing playing · `/play` to queue something"));
   container.addActionRowComponents(row(joinButton()));
   return v2(container);
 }

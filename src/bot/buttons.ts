@@ -1,6 +1,6 @@
 // Button clicks on the player and on the private /queue and /history views.
 // Clicks answer privately or by updating their own message; what they change
-// reaches the channel through the action log or the player's footer.
+// reaches the channel through the action log.
 import type { ButtonInteraction } from "discord.js";
 import { applyControl, type ControlAction } from "../watchtogether/control.js";
 import type { LastAction, Session } from "../watchtogether/session.js";
@@ -22,7 +22,7 @@ async function onPlayer(click: Click, session: Session, op: string): Promise<unk
   const live = livePlayer(click.guildId);
   // No player tracked (e.g. after a restart): this message becomes the live one,
   // before the change, so its log line lands in this channel.
-  if (!live) adoptPlayer(click.message, session);
+  if (!live) adoptPlayer(click.message, session, false);
 
   let outcome: Outcome;
   if (op === "toggle") {

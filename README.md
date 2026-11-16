@@ -93,26 +93,22 @@ once most of the room has.
 Queued tracks show who added them, in Discord and on the site.
 
 The bot keeps one **player** message per server, always at the bottom of its
-channel: what's playing with a progress bar (refreshed every 10 s), the next
-track, and Pause/Resume, Skip, Queue and Join buttons. Above it runs the
-**action log**, one small line per change worth keeping (queueing, clearing,
-shuffling, autoplay, the queue running out):
+channel: what's playing (who added it on a small line under the artist), its
+length with a live "ends in 2 minutes" countdown (a still progress bar while
+paused), and Pause/Resume, Skip and Join buttons. Above it runs the **action
+log**, one small line per thing that happened:
 
 - a command's reply is its line (`-# Queued **Song** (#3)`, under Discord's
   "Caleb used /play"); errors are only shown to whoever ran it;
-- button clicks and site actions post `-# Caleb queued **Song** (#3)`, and
-  quick repeats by the same person edit that line instead of adding one
-  (`-# Caleb queued **A**, **B**`).
+- button clicks and site actions post `-# Caleb skipped **Song**`, and quick
+  repeats by the same person edit that line instead of adding one
+  (`-# Caleb queued **A**, **B**`). Ordinary track changes only update the
+  player.
 
-Passing actions (pause/resume, seeks, skips, auto-skips of unembeddable videos,
-moving, removing and restoring queue items) don't post anything: the player's
-footer shows the latest one for two minutes (`-# Caleb skipped **Song** · 1
-minute ago`), stacking quick repeats the same way. Their slash commands reply
-only to whoever ran them. Ordinary track changes only update the player.
-
-After each new line the player re-posts below it, and it also re-posts once 5
-other messages have buried it. `/np` moves it down by hand. When nothing is
-left it collapses to a one-line idle state.
+The player is never edited: whenever what it shows changes, it's re-posted
+at the bottom and the old one deleted, so Discord doesn't mark it "(edited)".
+Its countdown is a Discord timestamp that ticks by itself. `/np` moves it down
+by hand. When nothing is left it collapses to a one-line idle state.
 
 The bot needs View Channel, Send Messages and Read Message History in the
 channels it's used in; without Send Messages the player is posted as a

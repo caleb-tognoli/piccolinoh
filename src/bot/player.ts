@@ -1,24 +1,18 @@
 // The live player: one message per guild, kept below the action log.
-// It moves to the bottom after each new log line and after commands that show
-// it, re-posts itself once other messages have buried it, and otherwise is
-// edited in place (session changes, and a tick that moves the progress bar
-// along and clears the footer once it expires).
+// Whenever what it shows changes it is re-posted at the bottom (the old one
+// deleted) rather than edited, so Discord never marks it "(edited)". Its
+// timeline is a Discord timestamp that counts down by itself, so playing on
+// needs no updates. It's only edited where the bot can't post (a player sent
+// as a command's follow-up).
 // All work for a guild runs one job at a time, and jobs queued in the same
 // tick coalesce, so a change plus its re-post is one post.
 import type { Message, SendableChannels } from "discord.js";
 import { logger } from "../logger.js";
 import { onSessionChange, type Session } from "../watchtogether/session.js";
-import { hasRecent, recentLine } from "./recent.js";
 import { playerView } from "./views.js";
 
-/** Newer messages after the player before an automatic update re-posts it. */
-export const BURIED_AFTER = 5;
-/** How often a playing player's progress bar is refreshed. */
-export const TICK_MS = 10_000;
-
-/** `auto` may re-post a buried player; `edit` never moves it; `repost` always does. */
-type Mode = "auto" | "edit" | "repost";
-const RANK: Record<Mode, number> = { auto: 0, edit: 1, repost: 2 };
+/** `auto` re-posts the player when its render changed; `repost` always does. */
+type Mode = "auto" | "repost";
 
 interface Live {
   message: Message;
@@ -40,7 +34,7 @@ const pending = new Map<string, Job>();
 const running = new Set<string>();
 
 function render(session: Session) {
-  const view = playerView(session, Date.now(), recentLine(session.guildId));
+  const view = playerView(session);
   return { view, key: JSON.stringify(view.components.map((c) => c.toJSON())) };
 }
 
@@ -56,7 +50,7 @@ function schedule(
     job = { mode, session, before: [], waiters: [] };
     pending.set(guildId, job);
     setImmediate(() => void drain(guildId));
-  } else if (RANK[mode] > RANK[job.mode]) {
+  } else if (mode === "repost") {
     job.mode = mode;
   }
   if (channel) job.channel = channel;
@@ -100,30 +94,19 @@ function replace(session: Session, message: Message, rendered: string): void {
   if (previous && previous.message.id !== message.id) previous.message.delete().catch(() => {});
 }
 
-async function isBuried(message: Message): Promise<boolean> {
-  if (!message.channel.isSendable()) return false;
-  const newer = await message.channel.messages
-    .fetch({ after: message.id, limit: BURIED_AFTER })
-    .catch(() => undefined); // no Read Message History → never counts as buried
-  return (newer?.size ?? 0) >= BURIED_AFTER;
-}
-
 async function run(job: Job): Promise<boolean> {
   const { session } = job;
   const moved = await Promise.all(job.before.map((p) => p.catch(() => false)));
   const mode = moved.some(Boolean) ? "repost" : job.mode;
   const current = live.get(session.guildId);
-  if (mode === "repost") {
-    const channel = job.channel ?? (current?.message.channel.isSendable() ? current.message.channel : undefined);
-    return channel ? post(session, channel) : false;
-  }
+  const channel = job.channel ?? (current?.message.channel.isSendable() ? current.message.channel : undefined);
+  if (mode === "repost") return channel ? post(session, channel) : false;
   if (!current) return true;
 
   const { view, key } = render(session);
   if (key === current.rendered) return true;
-  if (mode === "auto" && current.message.channel.isSendable() && (await isBuried(current.message))) {
-    return post(session, current.message.channel);
-  }
+  if (channel && (await post(session, channel))) return true;
+  // Can't post here: keep the player current in place instead.
   try {
     await current.message.edit(view);
     current.rendered = key;
@@ -138,14 +121,6 @@ async function run(job: Job): Promise<boolean> {
 onSessionChange((session) => {
   if (live.has(session.guildId)) void schedule(session, "auto");
 });
-
-// Moves the progress bar along and clears an expired footer. Edits only, so ticks never re-post.
-setInterval(() => {
-  for (const { session } of live.values()) {
-    const playing = session.current && session.current.pausedAtPositionSec == null;
-    if (playing || hasRecent(session.guildId)) void schedule(session, "edit");
-  }
-}, TICK_MS).unref();
 
 /**
  * Posts the player at the bottom of `channel`, replacing the old one, once
@@ -165,10 +140,14 @@ export function followLogLine(session: Session, posted: Promise<boolean>): Promi
   return schedule(session, "auto", undefined, posted);
 }
 
-/** Makes an existing message (an interaction reply, or a player from before a restart) the live one. */
-export function adoptPlayer(message: Message, session: Session): void {
-  replace(session, message, "");
-  void schedule(session, "edit");
+/**
+ * Makes an existing message the live player: an interaction reply just
+ * rendered from `session`, or (`upToDate` false) a player from before a
+ * restart, which is re-posted with what it should show now.
+ */
+export function adoptPlayer(message: Message, session: Session, upToDate = true): void {
+  replace(session, message, upToDate ? render(session).key : "");
+  if (!upToDate) void schedule(session, "auto");
 }
 
 export function livePlayer(guildId: string): Message | undefined {
